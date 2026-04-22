@@ -16,14 +16,11 @@
 package org.drools.journal.api;
 
 /**
- * Written by the compactor after the merged page is fully written to disk.
- * This is the atomic commit point: from this record onward {@code mergedPageId}
- * is canonical and {@code replacedPageIds} are retired.
- *
- * @param mergedPageId    ID of the now-canonical merged page
- * @param replacedPageIds IDs of the retired source pages
+ * Decision returned by a {@link PageRollStrategy} after each append.
  */
-public record CompactionCommitRecord(
-        String mergedPageId,
-        String[] replacedPageIds) implements JournalRecord {
+public enum RollDecision {
+    /** Keep appending to the current page. */
+    CONTINUE,
+    /** Seal the current page and start a new one. */
+    ROLL
 }
