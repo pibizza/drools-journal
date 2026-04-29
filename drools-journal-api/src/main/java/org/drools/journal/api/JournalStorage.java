@@ -52,7 +52,7 @@ public interface JournalStorage extends AutoCloseable {
     JournalScanner scan(long fromPosition);
 
     /**
-     * Returns the position of the most recently appended record, or {@code 0}
+     * Returns the position of the most recently appended record, or {@code -1}
      * if the journal is empty.
      */
     long latestPosition();
