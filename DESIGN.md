@@ -1,0 +1,257 @@
+# drools-journal — Design Document
+
+Upstream tracking issue: https://github.com/apache/incubator-kie-drools/issues/6682
+
+## Purpose
+
+`drools-journal` provides write-optimised, append-only session durability for Drools,
+replacing the full-object-serialisation model of `drools-reliability`. Every session
+mutation is captured as a small, typed `JournalRecord`; restore replays those records
+in a single sequential pass with no random access and no separate index file.
+
+---
+
+## Module Structure
+
+```
+drools-journal/
+  drools-journal-api/          ← JournalStorage SPI, record types, session config, strategy SPIs
+  drools-journal-core/         ← session hooks, restore engine, compaction coordinator
+  drools-journal-chronicle/    ← Chronicle Queue OSS implementation (single-host default)
+  drools-journal-aeron/        ← Aeron Archive OSS implementation (distributed, SBE encoded)
+  drools-journal-tests/        ← InMemoryJournalStorage + abstract SPI contract tests
+```
+
+Dependency chain: `core` → `api`; `chronicle` → `core`; `aeron` → `core`;
+`tests` → all others (test scope).
+
+---
+
+## Record Hierarchy
+
+```
+JournalRecord (sealed interface)
+├── InsertRecord            — fact insert (logical or non-logical); payload is EmbeddedPayload | ExternalRef
+├── RetractRecord           — fact retracted by factHandleId
+├── ModifyRecord            — targeted property update via lambdaClassRef + params (compiler rewrite)
+├── RuleMatchRecord         — rule activation fired; carries session-scoped auto-incrementing id
+├── SafepointRecord         — consistent checkpoint; always forces a page roll
+├── CompactionPrepareRecord — begins four-step compaction protocol
+└── CompactionCommitRecord  — commits merged page; source pages become safe to delete
+
+Payload (sealed interface, used by InsertRecord)
+├── EmbeddedPayload  — serialised bytes inline
+└── ExternalRef      — typeName + dbKey pointing to external store
+```
+
+---
+
+## SPI Contracts
+
+### JournalStorage / JournalScanner
+
+```java
+interface JournalStorage {
+    long append(ByteBuffer record);         // returns durable, monotonically increasing position
+    JournalScanner scan(long fromPosition); // sequential scan from position for restore
+    long latestPosition();
+    void close();                           // idempotent
+}
+```
+
+### PageRollStrategy
+
+Decides when to roll to a new physical page. Called after every append. Built-in
+factories in `PageRollStrategies`: `SafepointOnly`, `SizeThreshold(n)`,
+`CountThreshold(n)`, `Composite(strategies...)`. `SafepointRecord` always forces ROLL
+regardless of strategy (enforced in core, not in the SPI).
+
+### ObjectStorageStrategy
+
+Decides per-fact whether to embed bytes inline (`EMBED`) or write an `ExternalRef`
+(`EXTERNAL_REF`). Session-level default via `ObjectStorageMode` enum; overridable
+per-object via `ObjectStorageStrategy` SPI.
+
+### DurableSessionOption
+
+`KieSessionConfiguration` option with fluent builder:
+
+```java
+DurableSessionOption.newSession()
+    .withObjectStorage(ObjectStorageMode.EMBED)
+    .withPageRollStrategy(PageRollStrategies.safepointOnly())
+    .withJournalStorage(ChronicleJournalStorage.atPath("/var/drools/journal"))
+```
+
+---
+
+## Session Lifecycle Hooks (core)
+
+### JournalledNamedEntryPoint
+
+Extends `NamedEntryPoint` (following the `ReliableNamedEntryPoint` pattern from
+`drools-reliability`). Intercepts `insert()`, `insertLogical()`, `retract()`,
+`update()` — appends the appropriate `JournalRecord` before delegating to super.
+Applies `ObjectStorageStrategy` to decide embed vs `ExternalRef`.
+
+Until the DRL compiler rewrite (Phase 5, deferred) lands, all `update()` calls —
+including DRL `modify` blocks — write a full `InsertRecord` snapshot.
+
+### JournalledAgenda
+
+Extends `DefaultAgenda`. After each rule firing, appends `RuleMatchRecord` with an
+auto-incrementing session-scoped `long` ID. Stores the current activation ID in
+thread-local state so `insertLogical()` on the same RHS can wire `justifyingRuleMatchId`.
+Clears thread-local after the activation completes.
+
+### ModifyLambdaRegistry
+
+Session-scoped registry of `ModifyLambda` (`void apply(Object fact, Object[] params)`).
+Populated at KieBase build time. `lookup()` throws `JournalSchemaEvolutionException`
+on unresolved `lambdaClassRef`.
+
+---
+
+## Modify-as-Lambda Compiler Rewrite (Phase 5 — deferred)
+
+In durable mode, the DRL compiler rewrites `modify` blocks to emit a `ModifyRecord`
+instead of a full object snapshot:
+
+```java
+// Normal mode:
+person.setAge(newAge);
+drools.update(person);
+
+// Durable mode (after compiler rewrite):
+person.setAge(newAge);
+journal.appendModify(handle, "Rule_MyRule_modify_0", new Object[]{ newAge });
+drools.update(person);   // Rete notification only — does NOT emit a second InsertRecord
+```
+
+Lambda class names are deterministic: `Rule_{ruleName}_modify_{index}`. On restore,
+`ModifyRecord` replay applies the lambda directly to the in-memory fact — no per-modify
+Rete notification during restore (bulk re-propagation handles it in Phase 1.5).
+
+**This requires upstream changes to `drools-model-codegen`** (`Consequence.addUpdateBitMask()`)
+and will be submitted as a separate patch. Until it lands, the full-snapshot fallback is used.
+
+---
+
+## Storage Backends
+
+### Chronicle Queue (drools-journal-chronicle)
+
+One Chronicle Queue instance per session directory. `ExcerptAppender` for writes,
+`ExcerptTailer` for reads. Chronicle roll cycle maps to physical page boundaries;
+`PageRollStrategy` controls when rolls are triggered. Records serialised via
+`BytesMarshallable`. Multiple readers can scan concurrently.
+
+| Metric | Value |
+|--------|-------|
+| Write latency | Sub-µs to 40 µs p99 |
+| Throughput | 80M+ records/sec |
+| Cross-machine | No (commercial only) |
+| Best for | Single host, lowest latency |
+
+### Aeron Archive (drools-journal-aeron)
+
+Embedded `MediaDriver` in the writer JVM. `append()` publishes to a live Aeron
+recording; `scan(fromPosition)` replays via Archive client by recording ID.
+Records encoded/decoded with SBE (schema at `src/main/resources/sbe/journal-records.xml`
+covering all 7 record types).
+
+| Metric | Value |
+|--------|-------|
+| Write latency | ~29 µs round-trip |
+| Throughput | 20M+ records/sec |
+| Cross-machine | Yes — native UDP |
+| Best for | Multi-host cluster |
+
+### Contract Testing
+
+All `JournalStorage` implementations are verified by extending
+`JournalStorageContractTest` (in `drools-journal-tests`). The abstract class
+covers position monotonicity, scan coverage, content fidelity, and close
+idempotency. Chronicle and Aeron will add `ChronicleStorageContractTest` and
+`AeronStorageContractTest` respectively in Phases 6–7.
+
+---
+
+## Restore Protocol (RestoreEngine)
+
+Sequential single-pass scan — no random access, no separate index file:
+
+| Phase | Action |
+|-------|--------|
+| 0 | Scan for `CompactionPrepareRecord` / `CompactionCommitRecord`; build page-state map: PREPARE-only → use original pages; PREPARE+COMMIT → use merged page |
+| 1 | Sequential scan: apply `InsertRecord`, `RetractRecord`, `ModifyRecord` (via registry), `RuleMatchRecord` (build `firedMatches` + already-fired set), `SafepointRecord` (track last checkpoint); defer TMS links to `pendingTmsLinks` |
+| 1.5 | Bulk Rete re-propagation of all surviving facts |
+| 2 | Wire TMS logical dependencies from `pendingTmsLinks` via `firedMatches` |
+| 3 | Install `ReplayFilter` (suppresses already-fired tuples) on agenda |
+
+**Rollback:** records after the last `SafepointRecord` on the final page are discarded
+on incomplete-page crash. Since safepoints always force a page roll, worst-case data
+loss is one page since the last safepoint.
+
+---
+
+## Compaction Protocol (CompactionCoordinator)
+
+Tracks `pageId → (liveCount, totalCount)` in-memory (rebuilt by sequential scan on
+startup, updated incrementally as records are written). When
+`liveCount / totalCount < 0.30`, the page becomes a compaction candidate.
+
+Four-step atomic protocol — writer never pauses:
+
+```
+Step 1 — PREPARE:  append CompactionPrepareRecord { Pm_id, replacedPageIds: [P1, P2] }
+Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live entries only)
+Step 3 — COMMIT:   append CompactionCommitRecord { Pm_id, replacedPageIds: [P1, P2] }
+Step 4 — RETIRE:   lazily delete P1, P2 (correctness does not depend on this completing)
+```
+
+**Crash recovery:** PREPARE-only → ignore Pm, restore from originals.
+COMMIT present → Pm is canonical regardless of whether P1/P2 are still on disk.
+Concurrent compactions on distinct page pairs are supported.
+
+---
+
+## Key Decisions
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Journal vs database | Journal | Sequential writes, modify-as-delta, no read-modify-write |
+| New module vs extend StorageManager | New module | `Storage<K,V>` is wrong abstraction for append-only |
+| Modify capture | Compiler-driven + full-snapshot fallback | No proxy overhead; no API change |
+| Page boundary | Pluggable strategy; safepoints always force roll | Flexible + consistent rollback semantics |
+| Object storage | Session default + per-object strategy override | Flexibility without domain model pollution |
+| Compaction threading | Separate thread/JVM, fully non-blocking | Writer never pauses |
+| Page index | Derived on restore by sequential scan | No ongoing write overhead |
+| TMS reconstruction | Surrogate ID on RuleMatchRecord | Compact, causal, no side effects |
+| Storage library | Chronicle Queue (default), Aeron Archive (distributed) | Latency + Apache 2.0 |
+| Compaction atomicity | Four-step PREPARE/COMMIT via journal appends | No filesystem rename tricks; works for both backends |
+
+---
+
+## Implementation Status
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 — Maven setup | Parent + 5 child POMs | ✅ Complete |
+| 2 — API | JournalRecord hierarchy, all SPIs, DurableSessionOption | ✅ Complete |
+| 3 — Test infra | InMemoryJournalStorage/Scanner, SPI contract tests | ✅ Complete |
+| 4 — Core | JournalledNamedEntryPoint, JournalledAgenda, RestoreEngine, CompactionCoordinator | ⬜ Pending |
+| 5 — Compiler rewrite | DRL `modify` → `ModifyRecord` (upstream `drools-model-codegen` patch) | 🔁 Deferred |
+| 6 — Chronicle backend | ChronicleJournalStorage/Scanner | ⬜ Pending |
+| 7 — Aeron backend | SBE schema + AeronJournalStorage/Scanner | ⬜ Pending |
+| 8 — Integration tests | End-to-end durability, TMS, compaction, schema evolution | ⬜ Pending |
+
+---
+
+## Out of Scope (v1)
+
+- Schema evolution / migration tooling for renamed `lambdaClassRef`
+- Encryption of journal pages
+- Session replication / active-active clustering
+- Streaming restore
+- Multi-entry-point cross-ordering guarantees
