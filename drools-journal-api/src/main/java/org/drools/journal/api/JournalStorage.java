@@ -15,7 +15,6 @@
  */
 package org.drools.journal.api;
 
-import java.nio.ByteBuffer;
 
 /**
  * SPI for append-only journal storage.
@@ -30,14 +29,13 @@ import java.nio.ByteBuffer;
 public interface JournalStorage extends AutoCloseable {
 
     /**
-     * Appends a serialized record to the journal.
+     * Appends a record to the journal.
      *
-     * @param record the serialized record bytes; the buffer is read from its
-     *               current position to its limit and is not modified
+     * @param record the journal record to append
      * @return the position assigned to this record, usable as {@code fromPosition}
      *         in a later {@link #scan(long)} call
      */
-    long append(ByteBuffer record);
+    long append(JournalRecord record);
 
     /**
      * Opens a forward-only scanner starting at {@code fromPosition}.

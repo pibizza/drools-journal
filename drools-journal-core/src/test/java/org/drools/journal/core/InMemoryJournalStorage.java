@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.tests;
+package org.drools.journal.core;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,33 +35,17 @@ import org.drools.journal.api.JournalStorage;
  *
  * <p>NOT thread-safe — designed for single-threaded test use only.
  */
-public class InMemoryJournalStorage implements JournalStorage {
+class InMemoryJournalStorage implements JournalStorage {
 
     // NOT thread-safe — designed for single-threaded test use only
     private final List<JournalRecord> records = new ArrayList<>();
     private boolean closed = false;
 
-    /**
-     * Appends a record directly without any serialization.
-     *
-     * @return the position assigned to this record (zero-based)
-     */
-    public long appendRecord(final JournalRecord record) {
+    @Override
+    public long append(final JournalRecord record) {
         checkOpen();
         records.add(record);
         return records.size() - 1;
-    }
-
-    /**
-     * Not supported — {@code InMemoryJournalStorage} has no wire format.
-     * Use {@link #appendRecord(JournalRecord)} instead.
-     *
-     * @throws UnsupportedOperationException always
-     */
-    @Override
-    public long append(final ByteBuffer record) {
-        throw new UnsupportedOperationException(
-                "InMemoryJournalStorage has no wire format — use appendRecord(JournalRecord) instead");
     }
 
     @Override
@@ -83,7 +66,7 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
 
     /** Returns the total number of records appended so far. */
-    public int size() {
+    int size() {
         return records.size();
     }
 

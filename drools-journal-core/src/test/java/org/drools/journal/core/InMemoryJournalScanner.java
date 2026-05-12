@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.tests;
+package org.drools.journal.core;
 
 import java.util.List;
 import java.util.NoSuchElementException;
