@@ -15,7 +15,7 @@
  */
 package org.drools.journal.core;
 
-import org.drools.core.common.InternalFactHandle;
+import org.drools.core.common.DefaultFactHandle;
 import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.api.ExternalRef;
 import org.drools.journal.api.InsertRecord;
@@ -26,8 +26,6 @@ import org.drools.journal.api.StorageDecision;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class JournalledObjectStoreTest {
 
@@ -37,8 +35,7 @@ class JournalledObjectStoreTest {
         final JournalledObjectStore store = new JournalledObjectStore(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
-        final InternalFactHandle handle = mock(InternalFactHandle.class);
-        when(handle.getId()).thenReturn(42L);
+        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
 
         store.addHandle(handle, "hello");
 
@@ -58,9 +55,7 @@ class JournalledObjectStoreTest {
         final JournalledObjectStore store = new JournalledObjectStore(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
-        final InternalFactHandle handle = mock(InternalFactHandle.class);
-        when(handle.getId()).thenReturn(42L);
-        when(handle.getObject()).thenReturn("hello");
+        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
 
         store.addHandle(handle, "hello");
         store.removeHandle(handle);
@@ -72,13 +67,27 @@ class JournalledObjectStoreTest {
     }
 
     @Test
+    void addHandle_withActiveActivation_appendsLogicalInsertRecord() {
+        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        final JournalledObjectStore store = new JournalledObjectStore(
+                storage, (fact, handle) -> StorageDecision.EMBED);
+
+        store.setCurrentActivationId(99L);
+        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
+        store.addHandle(handle, "hello");
+
+        final InsertRecord insert = (InsertRecord) storage.scan(0).next();
+        assertThat(insert.logical()).isTrue();
+        assertThat(insert.justifyingRuleMatchId()).isEqualTo(99L);
+    }
+
+    @Test
     void addHandle_externalRef_appendsInsertRecordWithExternalRef() {
         final InMemoryJournalStorage storage = new InMemoryJournalStorage();
         final JournalledObjectStore store = new JournalledObjectStore(
                 storage, (fact, handle) -> StorageDecision.EXTERNAL_REF);
 
-        final InternalFactHandle handle = mock(InternalFactHandle.class);
-        when(handle.getId()).thenReturn(42L);
+        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
 
         store.addHandle(handle, "hello");
 

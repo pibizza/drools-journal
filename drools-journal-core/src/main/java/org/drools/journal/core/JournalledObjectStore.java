@@ -15,48 +15,37 @@
  */
 package org.drools.journal.core;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-
 import org.drools.core.common.IdentityObjectStore;
 import org.drools.core.common.InternalFactHandle;
-import org.drools.journal.api.EmbeddedPayload;
-import org.drools.journal.api.ExternalRef;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ObjectStorageStrategy;
-import org.drools.journal.api.Payload;
 import org.drools.journal.api.RetractRecord;
-import org.drools.journal.api.StorageDecision;
 
 public class JournalledObjectStore extends IdentityObjectStore {
 
     private final JournalStorage journal;
     private final ObjectStorageStrategy strategy;
+    private long currentActivationId = -1L;
 
     public JournalledObjectStore(final JournalStorage journal, final ObjectStorageStrategy strategy) {
         this.journal = journal;
         this.strategy = strategy;
     }
 
+    public void setCurrentActivationId(final long id) {
+        this.currentActivationId = id;
+    }
+
+    public void clearCurrentActivationId() {
+        this.currentActivationId = -1L;
+    }
+
     @Override
     public void addHandle(final InternalFactHandle handle, final Object object) {
         super.addHandle(handle, object);
-        journal.append(new InsertRecord(handle.getId(), false, -1L, buildPayload(object, handle)));
-    }
-
-    private Payload buildPayload(final Object object, final InternalFactHandle handle) {
-        if (strategy.decide(object, handle) == StorageDecision.EXTERNAL_REF) {
-            return new ExternalRef(object.getClass().getName(), String.valueOf(handle.getId()));
-        }
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-            oos.writeObject(object);
-            return new EmbeddedPayload(bos.toByteArray());
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to serialize fact: " + object.getClass().getName(), e);
-        }
+        final boolean logical = currentActivationId >= 0;
+        journal.append(new InsertRecord(handle.getId(), logical, currentActivationId, JournalPayloadBuilder.build(object, handle, strategy)));
     }
 
     @Override
