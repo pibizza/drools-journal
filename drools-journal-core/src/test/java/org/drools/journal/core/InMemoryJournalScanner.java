@@ -27,7 +27,7 @@ import org.drools.journal.api.JournalScanner;
  *
  * <p>NOT thread-safe — designed for single-threaded test use only.
  */
-class InMemoryJournalScanner implements JournalScanner {
+public class InMemoryJournalScanner implements JournalScanner {
 
     // NOT thread-safe — designed for single-threaded test use only
     private final List<JournalRecord> records;

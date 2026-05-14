@@ -35,7 +35,7 @@ import org.drools.journal.api.JournalStorage;
  *
  * <p>NOT thread-safe — designed for single-threaded test use only.
  */
-class InMemoryJournalStorage implements JournalStorage {
+public class InMemoryJournalStorage implements JournalStorage {
 
     // NOT thread-safe — designed for single-threaded test use only
     private final List<JournalRecord> records = new ArrayList<>();
@@ -68,6 +68,11 @@ class InMemoryJournalStorage implements JournalStorage {
     /** Returns the total number of records appended so far. */
     int size() {
         return records.size();
+    }
+
+    @Override
+    public String toString() {
+        return JournalPrinter.print(this);
     }
 
     private void checkOpen() {

@@ -21,19 +21,18 @@ import org.drools.core.common.InternalWorkingMemory;
 import org.drools.core.impl.InternalRuleBase;
 import org.drools.core.rule.accessor.FactHandleFactory;
 import org.drools.journal.api.JournalStorage;
+import org.drools.kiesession.agenda.DefaultAgendaFactory;
 
 public class JournalledAgendaFactory implements AgendaFactory {
-
-    private final JournalStorage journal;
-
-    public JournalledAgendaFactory(final JournalStorage journal) {
-        this.journal = journal;
-    }
 
     @Override
     public InternalAgenda createAgenda(final InternalRuleBase kieBase,
                                        final InternalWorkingMemory workingMemory,
                                        final FactHandleFactory factHandleFactory) {
+        final JournalStorage journal = (JournalStorage) workingMemory.getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
+        if (journal == null) {
+            return DefaultAgendaFactory.getInstance().createAgenda(kieBase, workingMemory, factHandleFactory);
+        }
         return new JournalledAgenda(kieBase, workingMemory, factHandleFactory, journal);
     }
 }

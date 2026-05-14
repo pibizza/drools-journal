@@ -53,4 +53,14 @@ public class JournalledObjectStore extends IdentityObjectStore {
         journal.append(new RetractRecord(handle.getId()));
         super.removeHandle(handle);
     }
+
+    @Override
+    public void updateHandle(final InternalFactHandle handle, final Object object) {
+        // Bypass journalled remove/add — an update is not a retract, and the InsertRecord snapshot
+        // is written by JournalledNamedEntryPoint.beforeUpdate() which always sets logical=false.
+        // Using addHandle() here would incorrectly mark the snapshot as logical when fired from a rule.
+        super.removeHandle(handle);
+        handle.setObject(object);
+        super.addHandle(handle, object);
+    }
 }
