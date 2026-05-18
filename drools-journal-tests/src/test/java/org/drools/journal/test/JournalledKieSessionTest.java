@@ -95,6 +95,25 @@ class JournalledKieSessionTest {
     }
 
     @Test
+    void multiple_activations_get_monotonically_increasing_match_ids() {
+        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        try (JournalledKieSession session = JournalledSessionFactory.create(
+                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+            session.insert(1);
+            session.insert(2);
+            session.fireAllRules();
+        }
+
+        assertThat(storage).hasToString("""
+                INSERT  id=1  Integer(1)
+                INSERT  id=2  Integer(2)
+                MATCH  id=1  rule=ProcessFact  facts=[1]
+                MATCH  id=2  rule=ProcessFact  facts=[2]
+                """);
+    }
+
+    @Test
     void insertLogical_records_logical_flag_and_justifying_match_id() {
         final InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
