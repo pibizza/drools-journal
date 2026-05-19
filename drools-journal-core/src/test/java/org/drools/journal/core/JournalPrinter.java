@@ -77,7 +77,7 @@ public final class JournalPrinter {
         final String facts = Arrays.stream(r.factHandleIds())
                 .mapToObj(Long::toString)
                 .collect(Collectors.joining(",", "[", "]"));
-        return "MATCH  id=" + r.id() + "  rule=" + r.ruleName() + "  facts=" + facts;
+        return "MATCH  id=" + r.id() + "  pkg=" + r.packageName() + "  rule=" + r.ruleName() + "  facts=" + facts;
     }
 
     private static String renderPayload(final InsertRecord r) {

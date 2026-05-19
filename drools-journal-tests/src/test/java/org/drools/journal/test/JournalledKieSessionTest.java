@@ -58,7 +58,7 @@ class JournalledKieSessionTest {
 
         assertThat(storage).hasToString("""
                 INSERT  id=1  Integer(42)
-                MATCH  id=1  rule=ProcessFact  facts=[1]
+                MATCH  id=1  pkg=org.drools.journal.test  rule=ProcessFact  facts=[1]
                 """);
     }
 
@@ -108,8 +108,8 @@ class JournalledKieSessionTest {
         assertThat(storage).hasToString("""
                 INSERT  id=1  Integer(1)
                 INSERT  id=2  Integer(2)
-                MATCH  id=1  rule=ProcessFact  facts=[1]
-                MATCH  id=2  rule=ProcessFact  facts=[2]
+                MATCH  id=1  pkg=org.drools.journal.test  rule=ProcessFact  facts=[1]
+                MATCH  id=2  pkg=org.drools.journal.test  rule=ProcessFact  facts=[2]
                 """);
     }
 
@@ -126,7 +126,7 @@ class JournalledKieSessionTest {
         assertThat(storage).hasToString("""
                 INSERT  id=1  Integer(42)
                 INSERT  id=2  logical  justifiedBy=1  String(hello)
-                MATCH  id=1  rule=LogicalInserter  facts=[1]
+                MATCH  id=1  pkg=org.drools.journal.test  rule=LogicalInserter  facts=[1]
                 """);
     }
 }

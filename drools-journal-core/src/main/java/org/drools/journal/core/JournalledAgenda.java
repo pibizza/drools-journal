@@ -87,7 +87,7 @@ public class JournalledAgenda extends DefaultAgenda {
                     .mapToLong(h -> ((InternalFactHandle) h).getId())
                     .toArray();
             try {
-                journal.append(new RuleMatchRecord(nextActivationId, event.getMatch().getRule().getName(), ids));
+                journal.append(new RuleMatchRecord(nextActivationId, event.getMatch().getRule().getPackageName(), event.getMatch().getRule().getName(), ids));
             } finally {
                 final JournalledObjectStore s = store();
                 if (s != null) {

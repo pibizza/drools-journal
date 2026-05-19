@@ -21,11 +21,13 @@ package org.drools.journal.api;
  * activation.
  *
  * @param id            auto-incrementing session-scoped counter assigned at write time
+ * @param packageName   package namespace of the rule that fired
  * @param ruleName      name of the rule that fired
  * @param factHandleIds tuple of fact handle IDs that matched the rule's conditions
  */
 public record RuleMatchRecord(
         long id,
+        String packageName,
         String ruleName,
         long[] factHandleIds) implements JournalRecord {
 }
