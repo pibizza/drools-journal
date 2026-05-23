@@ -27,7 +27,7 @@ public final class JournalledSessionFactory {
 
     private JournalledSessionFactory() {}
 
-    public static JournalledKieSession create(final KieBase kbase, final JournalStorage storage) {
+    public static JournalledKieSession open(final KieBase kbase, final JournalStorage storage) {
         final Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
         final JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
