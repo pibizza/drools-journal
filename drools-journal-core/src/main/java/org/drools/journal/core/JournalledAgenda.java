@@ -41,8 +41,8 @@ public class JournalledAgenda extends DefaultAgenda {
     private final JournalStorage journal;
     private long nextActivationId = 0L;
     private final AgendaEventListener listener;
-    // Resolved lazily: entryPointsManager is not yet set when the agenda is constructed
-    private JournalledObjectStore store;
+    // Resolved lazily: the runtime event listener is installed after the agenda is constructed
+    private JournallingRuntimeEventListener runtimeListener;
 
     public JournalledAgenda(final InternalRuleBase kieBase,
                             final InternalWorkingMemory workingMemory,
@@ -54,12 +54,14 @@ public class JournalledAgenda extends DefaultAgenda {
         workingMemory.getAgendaEventSupport().addEventListener(this.listener);
     }
 
-    private JournalledObjectStore store() {
-        if (store == null) {
-            final Object objectStore = workingMemory.getDefaultEntryPoint().getObjectStore();
-            store = objectStore instanceof JournalledObjectStore ? (JournalledObjectStore) objectStore : null;
+    private JournallingRuntimeEventListener runtimeListener() {
+        if (runtimeListener == null) {
+            workingMemory.getRuleRuntimeEventSupport().getEventListeners().stream()
+                    .filter(l -> l instanceof JournallingRuntimeEventListener)
+                    .findFirst()
+                    .ifPresent(l -> runtimeListener = (JournallingRuntimeEventListener) l);
         }
-        return store;
+        return runtimeListener;
     }
 
     @Override
@@ -74,9 +76,9 @@ public class JournalledAgenda extends DefaultAgenda {
         public void beforeMatchFired(final BeforeMatchFiredEvent event) {
             // If a consequence exception propagates uncaught, afterMatchFired never fires and currentActivationId
             // is left stale — acceptable because an uncaught consequence exception leaves the session unusable.
-            final JournalledObjectStore s = store();
-            if (s != null) {
-                s.setCurrentActivationId(++nextActivationId);
+            final JournallingRuntimeEventListener l = runtimeListener();
+            if (l != null) {
+                l.setCurrentActivationId(++nextActivationId);
             }
         }
 
@@ -89,9 +91,9 @@ public class JournalledAgenda extends DefaultAgenda {
             try {
                 journal.append(new RuleMatchRecord(nextActivationId, event.getMatch().getRule().getPackageName(), event.getMatch().getRule().getName(), ids));
             } finally {
-                final JournalledObjectStore s = store();
-                if (s != null) {
-                    s.clearCurrentActivationId();
+                final JournallingRuntimeEventListener l = runtimeListener();
+                if (l != null) {
+                    l.clearCurrentActivationId();
                 }
             }
         }

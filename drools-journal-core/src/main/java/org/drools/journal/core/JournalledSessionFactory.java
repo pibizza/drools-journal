@@ -16,6 +16,7 @@
 package org.drools.journal.core;
 
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.StorageDecision;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
 import org.kie.api.runtime.Environment;
@@ -29,6 +30,8 @@ public final class JournalledSessionFactory {
     public static JournalledKieSession create(final KieBase kbase, final JournalStorage storage) {
         final Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
-        return (JournalledKieSession) kbase.newKieSession(null, env);
+        final JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
+        session.addEventListener(new JournallingRuntimeEventListener(storage, (fact, handle) -> StorageDecision.EMBED));
+        return session;
     }
 }

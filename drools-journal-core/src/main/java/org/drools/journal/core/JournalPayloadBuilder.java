@@ -15,8 +15,10 @@
  */
 package org.drools.journal.core;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
 import org.drools.core.common.InternalFactHandle;
@@ -29,6 +31,17 @@ import org.drools.journal.api.StorageDecision;
 final class JournalPayloadBuilder {
 
     private JournalPayloadBuilder() {
+    }
+
+    static Object deserialize(final Payload payload) {
+        if (payload instanceof EmbeddedPayload embedded) {
+            try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(embedded.bytes()))) {
+                return ois.readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                throw new RuntimeException("Failed to deserialize payload", e);
+            }
+        }
+        throw new UnsupportedOperationException("Cannot deserialize payload type: " + payload.getClass().getName());
     }
 
     static Payload build(final Object object, final InternalFactHandle handle, final ObjectStorageStrategy strategy) {

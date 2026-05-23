@@ -17,48 +17,14 @@ package org.drools.journal.core;
 
 import org.drools.core.common.IdentityObjectStore;
 import org.drools.core.common.InternalFactHandle;
-import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.JournalStorage;
-import org.drools.journal.api.ObjectStorageStrategy;
-import org.drools.journal.api.RetractRecord;
 
 public class JournalledObjectStore extends IdentityObjectStore {
 
-    private final JournalStorage journal;
-    private final ObjectStorageStrategy strategy;
-    private long currentActivationId = -1L;
-
-    public JournalledObjectStore(final JournalStorage journal, final ObjectStorageStrategy strategy) {
-        this.journal = journal;
-        this.strategy = strategy;
-    }
-
-    public void setCurrentActivationId(final long id) {
-        this.currentActivationId = id;
-    }
-
-    public void clearCurrentActivationId() {
-        this.currentActivationId = -1L;
-    }
-
-    @Override
-    public void addHandle(final InternalFactHandle handle, final Object object) {
-        super.addHandle(handle, object);
-        final boolean logical = currentActivationId >= 0;
-        journal.append(new InsertRecord(handle.getId(), logical, currentActivationId, JournalPayloadBuilder.build(object, handle, strategy)));
-    }
-
-    @Override
-    public void removeHandle(final InternalFactHandle handle) {
-        journal.append(new RetractRecord(handle.getId()));
-        super.removeHandle(handle);
-    }
-
     @Override
     public void updateHandle(final InternalFactHandle handle, final Object object) {
-        // Bypass journalled remove/add — an update is not a retract, and the InsertRecord snapshot
-        // is written by JournalledNamedEntryPoint.beforeUpdate() which always sets logical=false.
-        // Using addHandle() here would incorrectly mark the snapshot as logical when fired from a rule.
+        // Bypass the listener's objectInserted/objectDeleted events — an update is not a
+        // retract followed by an insert. The objectUpdated event fired by NamedEntryPoint
+        // writes the InsertRecord snapshot via JournallingRuntimeEventListener.
         super.removeHandle(handle);
         handle.setObject(object);
         super.addHandle(handle, object);

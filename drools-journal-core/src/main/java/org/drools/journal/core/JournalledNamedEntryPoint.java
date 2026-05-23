@@ -58,12 +58,12 @@ public class JournalledNamedEntryPoint extends NamedEntryPoint {
         // Called from the full constructor via super() — read journal from the session Environment
         this.journal = (JournalStorage) ((WorkingMemory) reteEvaluator).getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
         this.strategy = (fact, handle) -> StorageDecision.EMBED;
-        return new JournalledObjectStore(journal, strategy);
+        return new JournalledObjectStore();
     }
 
     @Override
     protected void beforeUpdate(final InternalFactHandle handle, final Object object, final InternalMatch internalMatch,
                                 final Object originalObject, final PropagationContext propagationContext) {
-        journal.append(new InsertRecord(handle.getId(), false, -1L, JournalPayloadBuilder.build(object, handle, strategy)));
+        // Journal write moved to JournallingRuntimeEventListener.objectUpdated()
     }
 }
