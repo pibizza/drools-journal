@@ -44,6 +44,16 @@ final class JournalPayloadBuilder {
         throw new UnsupportedOperationException("Cannot deserialize payload type: " + payload.getClass().getName());
     }
 
+    static EmbeddedPayload embed(final Object object) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+            oos.writeObject(object);
+            return new EmbeddedPayload(bos.toByteArray());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to serialize fact: " + object.getClass().getName(), e);
+        }
+    }
+
     static Payload build(final Object object, final InternalFactHandle handle, final ObjectStorageStrategy strategy) {
         if (strategy.decide(object, handle) == StorageDecision.EXTERNAL_REF) {
             return new ExternalRef(object.getClass().getName(), String.valueOf(handle.getId()));

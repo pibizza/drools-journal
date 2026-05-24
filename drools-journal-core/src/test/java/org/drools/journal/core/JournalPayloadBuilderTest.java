@@ -28,7 +28,7 @@ class JournalPayloadBuilderTest {
     @Test
     void deserializeEmbeddedPayloadReturnsOriginalObject() {
         String original = "hello journal";
-        EmbeddedPayload payload = serialize(original);
+        EmbeddedPayload payload = JournalPayloadBuilder.embed(original);
 
         Object result = JournalPayloadBuilder.deserialize(payload);
 
@@ -41,15 +41,5 @@ class JournalPayloadBuilderTest {
 
         assertThatThrownBy(() -> JournalPayloadBuilder.deserialize(ref))
                 .isInstanceOf(UnsupportedOperationException.class);
-    }
-
-    private static EmbeddedPayload serialize(Object obj) {
-        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(bos)) {
-            oos.writeObject(obj);
-        } catch (java.io.IOException e) {
-            throw new RuntimeException(e);
-        }
-        return new EmbeddedPayload(bos.toByteArray());
     }
 }

@@ -1,0 +1,71 @@
+/*
+ * Copyright (c) 2026 Drools Journal Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.drools.journal.core;
+
+import org.drools.journal.api.InsertRecord;
+import org.drools.journal.api.JournalRecord;
+import org.drools.journal.api.JournalScanner;
+import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.RetractRecord;
+import org.drools.journal.api.SafepointRecord;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+// NOT thread-safe — Drools sessions fire on a single thread
+class RestoreEngine {
+
+    record ScanResult(Map<Long, Object> survivingFacts) {}
+
+    private final JournalStorage journal;
+    private final ModifyLambdaRegistry lambdaRegistry;
+
+    RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
+        this.journal = journal;
+        this.lambdaRegistry = lambdaRegistry;
+    }
+
+    ScanResult scan() {
+        final Map<Long, Object> survivingFacts = new HashMap<>();
+        final List<JournalRecord> pending = new ArrayList<>();
+
+        final JournalScanner scanner = journal.scan(0);
+        while (scanner.hasNext()) {
+            final JournalRecord record = scanner.next();
+            if (record instanceof SafepointRecord) {
+                flush(pending, survivingFacts);
+                pending.clear();
+            } else {
+                pending.add(record);
+            }
+        }
+        // Trailing pending records after the last safepoint are silently discarded
+
+        return new ScanResult(survivingFacts);
+    }
+
+    private static void flush(final List<JournalRecord> pending, final Map<Long, Object> survivingFacts) {
+        for (final JournalRecord record : pending) {
+            if (record instanceof final InsertRecord insert) {
+                survivingFacts.put(insert.factHandleId(), JournalPayloadBuilder.deserialize(insert.payload()));
+            } else if (record instanceof final RetractRecord retract) {
+                survivingFacts.remove(retract.factHandleId());
+            }
+        }
+    }
+}
