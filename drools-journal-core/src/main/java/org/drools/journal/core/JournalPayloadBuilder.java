@@ -28,12 +28,12 @@ import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.Payload;
 import org.drools.journal.api.StorageDecision;
 
-final class JournalPayloadBuilder {
+public final class JournalPayloadBuilder {
 
     private JournalPayloadBuilder() {
     }
 
-    static Object deserialize(final Payload payload) {
+    public static Object deserialize(final Payload payload) {
         if (payload instanceof EmbeddedPayload embedded) {
             try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(embedded.bytes()))) {
                 return ois.readObject();
@@ -44,7 +44,7 @@ final class JournalPayloadBuilder {
         throw new UnsupportedOperationException("Cannot deserialize payload type: " + payload.getClass().getName());
     }
 
-    static EmbeddedPayload embed(final Object object) {
+    public static EmbeddedPayload embed(final Object object) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream oos = new ObjectOutputStream(bos)) {
             oos.writeObject(object);

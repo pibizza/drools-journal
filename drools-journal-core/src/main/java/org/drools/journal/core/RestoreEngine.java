@@ -21,6 +21,7 @@ import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.SafepointRecord;
+import org.kie.api.runtime.KieSession;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +39,13 @@ class RestoreEngine {
     RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
         this.journal = journal;
         this.lambdaRegistry = lambdaRegistry;
+    }
+
+    public void restore(final KieSession session) {
+        final ScanResult scanResult = scan();
+        for (final Object fact : scanResult.survivingFacts().values()) {
+            session.insert(fact);
+        }
     }
 
     ScanResult scan() {
