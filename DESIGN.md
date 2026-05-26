@@ -34,7 +34,7 @@ JournalRecord (sealed interface)
 ├── InsertRecord            — fact insert (logical or non-logical); payload is EmbeddedPayload | ExternalRef
 ├── RetractRecord           — fact retracted by factHandleId
 ├── ModifyRecord            — targeted property update via lambdaClassRef + params (compiler rewrite)
-├── RuleMatchRecord         — rule activation fired; carries session-scoped auto-incrementing id
+├── RuleMatchRecord         — rule activation fired; carries session-scoped auto-incrementing id, packageName + ruleName
 ├── SafepointRecord         — consistent checkpoint; always forces a page roll
 ├── CompactionPrepareRecord — begins four-step compaction protocol
 └── CompactionCommitRecord  — commits merged page; source pages become safe to delete
@@ -52,7 +52,7 @@ Payload (sealed interface, used by InsertRecord)
 
 ```java
 interface JournalStorage {
-    long append(ByteBuffer record);         // returns durable, monotonically increasing position
+    long append(JournalRecord record);      // returns durable, monotonically increasing position
     JournalScanner scan(long fromPosition); // sequential scan from position for restore
     long latestPosition();
     void close();                           // idempotent
@@ -87,22 +87,48 @@ DurableSessionOption.newSession()
 
 ## Session Lifecycle Hooks (core)
 
+### Session wiring — JournalledRuntimeComponentFactory
+
+`JournalledRuntimeComponentFactory` (SPI-registered, priority 1) intercepts
+`createStatefulSession()`, `getAgendaFactory()`, and `getEntryPointFactory()`. When
+`JournalStorage` is present in the `Environment`, it produces a `JournalledKieSession`
+(extends `StatefulKnowledgeSessionImpl`) and wires in `JournalledAgendaFactory` and
+`JournalledEntryPointFactory`. Context is passed via `Environment` under a fixed key —
+avoiding KieSessionConfiguration changes that would create a wrong-direction dependency
+(core → journal-api).
+
+Public entry point: `JournalledSessionFactory.open(kbase, storage)` — the same call
+works whether the journal is empty (fresh session) or contains prior state (restore).
+`JournalStorage` lifecycle is owned by the caller; `dispose()` does not close it.
+
 ### JournalledNamedEntryPoint
 
-Extends `NamedEntryPoint` (following the `ReliableNamedEntryPoint` pattern from
-`drools-reliability`). Intercepts `insert()`, `insertLogical()`, `retract()`,
-`update()` — appends the appropriate `JournalRecord` before delegating to super.
-Applies `ObjectStorageStrategy` to decide embed vs `ExternalRef`.
+Extends `NamedEntryPoint`. Overrides `createObjectStore()` to return a
+`JournalledObjectStore`, and `updateHandle()` to prevent spurious `objectInserted` /
+`objectDeleted` events during update (uses `super.removeHandle()` + `super.addHandle()`
+so that `JournallingRuntimeEventListener` remains the sole write point for updates).
 
-Until the DRL compiler rewrite (Phase 5, deferred) lands, all `update()` calls —
-including DRL `modify` blocks — write a full `InsertRecord` snapshot.
+### JournalledObjectStore
+
+Extends `IdentityObjectStore`. Overrides `addHandle()` and `removeHandle()` — these
+events feed `JournallingRuntimeEventListener` via the `RuleRuntimeEventListener` path.
+
+### JournallingRuntimeEventListener
+
+Implements `RuleRuntimeEventListener`. Installed on the session after construction by
+`JournalledSessionFactory`; during restore it is simply not installed, allowing Rete
+re-propagation without journal side-effects. Handles `objectInserted` → `InsertRecord`,
+`objectDeleted` → `RetractRecord`, `objectUpdated` → full `InsertRecord` snapshot.
+Manages `currentActivationId` (set/cleared around each rule firing) for logical inserts.
+Serialisation delegated to `JournalPayloadBuilder`, which also provides
+`deserialize(Payload) → Object` for restore.
 
 ### JournalledAgenda
 
 Extends `DefaultAgenda`. After each rule firing, appends `RuleMatchRecord` with an
-auto-incrementing session-scoped `long` ID. Stores the current activation ID in
-thread-local state so `insertLogical()` on the same RHS can wire `justifyingRuleMatchId`.
-Clears thread-local after the activation completes.
+auto-incrementing session-scoped `long` ID (`packageName` + `ruleName` + `factHandleIds`).
+Resolves the `JournallingRuntimeEventListener` lazily on first event and calls
+`setCurrentActivationId()` / `clearCurrentActivationId()` around each activation.
 
 ### ModifyLambdaRegistry
 
@@ -184,10 +210,17 @@ Sequential single-pass scan — no random access, no separate index file:
 | Phase | Action |
 |-------|--------|
 | 0 | Scan for `CompactionPrepareRecord` / `CompactionCommitRecord`; build page-state map: PREPARE-only → use original pages; PREPARE+COMMIT → use merged page |
-| 1 | Sequential scan: apply `InsertRecord`, `RetractRecord`, `ModifyRecord` (via registry), `RuleMatchRecord` (build `firedMatches` + already-fired set), `SafepointRecord` (track last checkpoint); defer TMS links to `pendingTmsLinks` |
-| 1.5 | Bulk Rete re-propagation of all surviving facts |
-| 2 | Wire TMS logical dependencies from `pendingTmsLinks` via `firedMatches` |
-| 3 | Install `ReplayFilter` (suppresses already-fired tuples) on agenda |
+| 1 | Sequential scan with safepoint buffering: records accumulated in a pending buffer, flushed only on `SafepointRecord`; trailing records after the last safepoint are discarded. Applies `InsertRecord`, `RetractRecord`, `ModifyRecord` (registry lookup; throws `JournalSchemaEvolutionException` on unresolved `lambdaClassRef`; lambda application deferred to Phase 5), `RuleMatchRecord` (builds `firedMatches` indexed by ID), `SafepointRecord` |
+| 1.5 | Bulk Rete re-propagation of surviving facts; `JournalledSessionFactory` inserts facts, builds `Map<Long, FactHandle> oldToNew`, translates `RuleMatchRecord` handle IDs to new session IDs, constructs `ReplayFilter` |
+| 2 | TMS wiring: logical facts restored via `TruthMaintenanceSystem.insertPositive()` (establishes JUSTIFIED `EqualityKey`); `ReplayFilter.matchCache` captures live `InternalMatch` objects for TMS links |
+| 3 | Install `ReplayFilter` (suppresses already-fired `(packageName, ruleName, long[] factHandleIds)` tuples) on agenda via `JournalledKieSession.fireAllRules()` override |
+
+`RestoreEngine` is a pure data collector: `scan()` returns `ScanResult(survivingFacts, firedMatches)`.
+All orchestration lives in `JournalledSessionFactory.open()`, decomposed into
+`restore()`, `insertNonLogicalFacts()`, `buildReplayFilter()`, `wireTms()`.
+
+`ReplayFilter` is keyed on `(packageName, ruleName, long[] factHandleIds)` via a private
+`MatchKey` record using `Arrays.equals` / `Arrays.hashCode` for correct array equality.
 
 **Rollback:** records after the last `SafepointRecord` on the final page are discarded
 on incomplete-page crash. Since safepoints always force a page roll, worst-case data
@@ -240,7 +273,9 @@ Concurrent compactions on distinct page pairs are supported.
 | 1 — Maven setup | Parent + 5 child POMs | ✅ Complete |
 | 2 — API | JournalRecord hierarchy, all SPIs, DurableSessionOption | ✅ Complete |
 | 3 — Test infra | InMemoryJournalStorage/Scanner, SPI contract tests | ✅ Complete |
-| 4 — Core | JournalledNamedEntryPoint, JournalledAgenda, RestoreEngine, CompactionCoordinator | ⬜ Pending |
+| 4a — Core (runtime hooks) | JournalledNamedEntryPoint, JournalledAgenda, JournallingRuntimeEventListener, JournalledSessionFactory | ✅ Complete |
+| 4b — Core (restore) | RestoreEngine, ReplayFilter, TMS wiring | ✅ Complete |
+| 4c — Core (compaction) | CompactionCoordinator | ⬜ Separate epic |
 | 5 — Compiler rewrite | DRL `modify` → `ModifyRecord` (upstream `drools-model-codegen` patch) | 🔁 Deferred |
 | 6 — Chronicle backend | ChronicleJournalStorage/Scanner | ⬜ Pending |
 | 7 — Aeron backend | SBE schema + AeronJournalStorage/Scanner | ⬜ Pending |
