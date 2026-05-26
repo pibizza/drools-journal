@@ -24,7 +24,9 @@ import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
 import org.drools.journal.core.JournalPayloadBuilder;
 import org.junit.jupiter.api.Test;
+import org.kie.api.KieBase;
 import org.kie.api.io.ResourceType;
+import org.kie.api.runtime.rule.FactHandle;
 import org.kie.internal.utils.KieHelper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -95,6 +97,75 @@ class JournalledKieSessionRestoreTest {
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
             assertThat(session.getObjects()).isEmpty();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // End-to-end restore: Session 1 runs → Session 2 restores from same storage
+    // -------------------------------------------------------------------------
+
+    @Test
+    void endToEnd_insertAndFire_restoredSessionHasFactAndRuleDoesNotFireAgain() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+
+        // Session 1: insert a fact and fire
+        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+            session1.insert(42);
+            session1.fireAllRules();
+        }
+
+        // Session 2: open on the same storage — should restore working memory
+        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+            assertThat(session2.getObjects()).singleElement().isEqualTo(42);
+            // Rule already fired for this fact — should not fire again
+            assertThat(session2.fireAllRules()).isZero();
+        }
+    }
+
+    @Test
+    void endToEnd_insertRetractFire_restoredSessionIsEmpty() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+
+        // Session 1: insert, retract, fire
+        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+            FactHandle handle = session1.insert(42);
+            session1.delete(handle);
+            session1.fireAllRules();
+        }
+
+        // Session 2: working memory should be empty
+        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+            assertThat(session2.getObjects()).isEmpty();
+            assertThat(session2.fireAllRules()).isZero();
+        }
+    }
+
+    @Test
+    void endToEnd_multipleSessions_eachResumesCorrectly() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+
+        // Session 1: insert fact 1, fire
+        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+            session1.insert(1);
+            session1.fireAllRules();
+        }
+
+        // Session 2: restore, insert fact 2, fire
+        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+            assertThat(session2.getObjects()).singleElement().isEqualTo(1);
+            session2.insert(2);
+            session2.fireAllRules();
+        }
+
+        // Session 3: both facts present, neither rule fires again
+        try (JournalledKieSession session3 = JournalledSessionFactory.open(kbase, storage)) {
+            @SuppressWarnings("unchecked")
+            java.util.Collection<Object> objects3 = (java.util.Collection<Object>) session3.getObjects();
+            assertThat(objects3).containsExactlyInAnyOrder(1, 2);
+            assertThat(session3.fireAllRules()).isZero();
         }
     }
 
