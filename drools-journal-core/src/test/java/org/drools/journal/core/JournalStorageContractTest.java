@@ -67,7 +67,7 @@ public abstract class JournalStorageContractTest {
     void latestPosition_afterAppend_returnsLastAppendedPosition() {
         try (JournalStorage storage = createStorage()) {
             appendTestRecord(storage, sampleRecord(0));
-            final long lastPos = appendTestRecord(storage, sampleRecord(1));
+            long lastPos = appendTestRecord(storage, sampleRecord(1));
             assertThat(storage.latestPosition()).isEqualTo(lastPos);
         }
     }
@@ -79,9 +79,9 @@ public abstract class JournalStorageContractTest {
     @Test
     void append_returnsMonotonicallyIncreasingPositions() {
         try (JournalStorage storage = createStorage()) {
-            final long pos0 = appendTestRecord(storage, sampleRecord(0));
-            final long pos1 = appendTestRecord(storage, sampleRecord(1));
-            final long pos2 = appendTestRecord(storage, sampleRecord(2));
+            long pos0 = appendTestRecord(storage, sampleRecord(0));
+            long pos1 = appendTestRecord(storage, sampleRecord(1));
+            long pos2 = appendTestRecord(storage, sampleRecord(2));
             assertThat(pos0).isLessThan(pos1);
             assertThat(pos1).isLessThan(pos2);
         }
@@ -118,7 +118,7 @@ public abstract class JournalStorageContractTest {
     void scan_fromMidpoint_returnsRecordsFromThatPositionOnward() {
         try (JournalStorage storage = createStorage()) {
             appendTestRecord(storage, sampleRecord(0));
-            final long midPos = appendTestRecord(storage, sampleRecord(1));
+            long midPos = appendTestRecord(storage, sampleRecord(1));
             appendTestRecord(storage, sampleRecord(2));
 
             try (JournalScanner scanner = storage.scan(midPos)) {
@@ -133,7 +133,7 @@ public abstract class JournalStorageContractTest {
     void scan_fromLatestPosition_returnsSingleRecord() {
         try (JournalStorage storage = createStorage()) {
             appendTestRecord(storage, sampleRecord(0));
-            final long lastPos = appendTestRecord(storage, sampleRecord(1));
+            long lastPos = appendTestRecord(storage, sampleRecord(1));
 
             try (JournalScanner scanner = storage.scan(lastPos)) {
                 assertThat(drain(scanner))
@@ -146,7 +146,7 @@ public abstract class JournalStorageContractTest {
     @Test
     void scan_fromBeyondEnd_returnsEmptyScanner() {
         try (JournalStorage storage = createStorage()) {
-            final long lastPos = appendTestRecord(storage, sampleRecord(0));
+            long lastPos = appendTestRecord(storage, sampleRecord(0));
 
             try (JournalScanner scanner = storage.scan(lastPos + 1000)) {
                 assertThat(scanner.hasNext()).isFalse();
@@ -176,7 +176,7 @@ public abstract class JournalStorageContractTest {
     @Test
     void scannerPosition_beforeFirstNext_returnsStartPosition() {
         try (JournalStorage storage = createStorage()) {
-            final long startPos = appendTestRecord(storage, sampleRecord(0));
+            long startPos = appendTestRecord(storage, sampleRecord(0));
 
             try (JournalScanner scanner = storage.scan(startPos)) {
                 assertThat(scanner.position()).isEqualTo(startPos);
@@ -187,8 +187,8 @@ public abstract class JournalStorageContractTest {
     @Test
     void scannerPosition_afterNext_returnsPositionOfLastReturnedRecord() {
         try (JournalStorage storage = createStorage()) {
-            final long pos0 = appendTestRecord(storage, sampleRecord(0));
-            final long pos1 = appendTestRecord(storage, sampleRecord(1));
+            long pos0 = appendTestRecord(storage, sampleRecord(0));
+            long pos1 = appendTestRecord(storage, sampleRecord(1));
 
             try (JournalScanner scanner = storage.scan(pos0)) {
                 scanner.next();
@@ -205,7 +205,7 @@ public abstract class JournalStorageContractTest {
 
     @Test
     void storageClose_isIdempotent() {
-        final JournalStorage storage = createStorage();
+        JournalStorage storage = createStorage();
         storage.close();
         storage.close();
     }
@@ -214,7 +214,7 @@ public abstract class JournalStorageContractTest {
     void scannerClose_isIdempotent() {
         try (JournalStorage storage = createStorage()) {
             appendTestRecord(storage, sampleRecord(0));
-            final JournalScanner scanner = storage.scan(0);
+            JournalScanner scanner = storage.scan(0);
             scanner.close();
             scanner.close();
         }
@@ -225,7 +225,7 @@ public abstract class JournalStorageContractTest {
     // -------------------------------------------------------------------------
 
     private static List<JournalRecord> drain(final JournalScanner scanner) {
-        final List<JournalRecord> result = new ArrayList<>();
+        List<JournalRecord> result = new ArrayList<>();
         scanner.forEachRemaining(result::add);
         return result;
     }

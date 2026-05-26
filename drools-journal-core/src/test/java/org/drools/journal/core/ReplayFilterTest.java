@@ -32,7 +32,7 @@ class ReplayFilterTest {
 
     @Test
     void accept_returns_false_for_match_in_fired_set() {
-        final ReplayFilter filter = new ReplayFilter(List.of(
+        ReplayFilter filter = new ReplayFilter(List.of(
                 ruleMatchRecord(1L, "org.example", "MyRule", 10L, 20L)));
 
         assertThat(filter.accept(match("org.example", "MyRule", 10L, 20L))).isFalse();
@@ -40,7 +40,7 @@ class ReplayFilterTest {
 
     @Test
     void accept_returns_true_for_match_not_in_fired_set() {
-        final ReplayFilter filter = new ReplayFilter(List.of(
+        ReplayFilter filter = new ReplayFilter(List.of(
                 ruleMatchRecord(1L, "org.example", "MyRule", 10L, 20L)));
 
         assertThat(filter.accept(match("org.example", "MyRule", 10L, 99L))).isTrue();
@@ -48,7 +48,7 @@ class ReplayFilterTest {
 
     @Test
     void accept_distinguishes_same_rule_name_in_different_packages() {
-        final ReplayFilter filter = new ReplayFilter(List.of(
+        ReplayFilter filter = new ReplayFilter(List.of(
                 ruleMatchRecord(1L, "org.example.a", "MyRule", 10L)));
 
         assertThat(filter.accept(match("org.example.a", "MyRule", 10L))).isFalse();
@@ -57,7 +57,7 @@ class ReplayFilterTest {
 
     @Test
     void accept_uses_array_content_equality_not_reference() {
-        final ReplayFilter filter = new ReplayFilter(List.of(
+        ReplayFilter filter = new ReplayFilter(List.of(
                 ruleMatchRecord(1L, "org.example", "MyRule", 10L, 20L)));
 
         // Different array instance, same content — must still suppress
@@ -66,7 +66,7 @@ class ReplayFilterTest {
 
     @Test
     void empty_fired_set_accepts_everything() {
-        final ReplayFilter filter = new ReplayFilter(List.of());
+        ReplayFilter filter = new ReplayFilter(List.of());
 
         assertThat(filter.accept(match("org.example", "AnyRule", 1L))).isTrue();
     }
@@ -78,7 +78,7 @@ class ReplayFilterTest {
     }
 
     private static Match match(final String pkg, final String rule, final long... ids) {
-        final Rule ruleObj = new Rule() {
+        Rule ruleObj = new Rule() {
             @Override public String getPackageName() { return pkg; }
             @Override public String getName() { return rule; }
             @Override public Map<String, Object> getMetaData() { throw new UnsupportedOperationException(); }
@@ -87,7 +87,7 @@ class ReplayFilterTest {
             @Override public String getNamespace() { throw new UnsupportedOperationException(); }
             @Override public String getId() { throw new UnsupportedOperationException(); }
         };
-        final List<FactHandle> handles = Arrays.stream(ids)
+        List<FactHandle> handles = Arrays.stream(ids)
                 .mapToObj(id -> (FactHandle) new FactHandle() {
                     @Override public long getId() { return id; }
                     @Override public Object getObject() { throw new UnsupportedOperationException(); }

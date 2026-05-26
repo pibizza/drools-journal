@@ -26,54 +26,54 @@ class RestoreEngineTest {
 
     @Test
     void emptyJournal_producesEmptySurvivingFacts() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        final RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).isEmpty();
     }
 
     @Test
     void insertBeforeSafepoint_factSurvives() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
         storage.append(new SafepointRecord(1L, 0L));
 
-        final RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).containsEntry(1L, "hello");
     }
 
     @Test
     void updateInsertBeforeSafepoint_replacesFactInSurvivingFacts() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("world")));
         storage.append(new SafepointRecord(1L, 0L));
 
-        final RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).containsEntry(1L, "world");
     }
 
     @Test
     void retractBeforeSafepoint_factRemovedFromSurvivingFacts() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
         storage.append(new RetractRecord(1L));
         storage.append(new SafepointRecord(1L, 0L));
 
-        final RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).isEmpty();
     }
 
     @Test
     void insertWithoutSafepoint_factIsDiscarded() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
 
-        final RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).isEmpty();
     }

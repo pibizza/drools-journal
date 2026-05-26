@@ -24,8 +24,8 @@ class ModifyLambdaRegistryTest {
 
     @Test
     void lookupReturnsRegisteredLambda() {
-        final ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
-        final ModifyLambda lambda = (fact, params) -> {};
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        ModifyLambda lambda = (fact, params) -> {};
 
         registry.register("Rule_MyRule_modify_0", lambda);
 
@@ -34,7 +34,7 @@ class ModifyLambdaRegistryTest {
 
     @Test
     void lookupThrowsForUnknownRef() {
-        final ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
 
         assertThatThrownBy(() -> registry.lookup("Rule_Missing_modify_0"))
                 .isInstanceOf(JournalSchemaEvolutionException.class)
@@ -43,9 +43,9 @@ class ModifyLambdaRegistryTest {
 
     @Test
     void registerOverwritesPreviousLambda() {
-        final ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
-        final ModifyLambda original = (fact, params) -> {};
-        final ModifyLambda replacement = (fact, params) -> {};
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        ModifyLambda original = (fact, params) -> {};
+        ModifyLambda replacement = (fact, params) -> {};
 
         registry.register("Rule_MyRule_modify_0", original);
         registry.register("Rule_MyRule_modify_0", replacement);
@@ -55,9 +55,9 @@ class ModifyLambdaRegistryTest {
 
     @Test
     void multipleLambdasLookedUpIndependently() {
-        final ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
-        final ModifyLambda first = (fact, params) -> {};
-        final ModifyLambda second = (fact, params) -> {};
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        ModifyLambda first = (fact, params) -> {};
+        ModifyLambda second = (fact, params) -> {};
 
         registry.register("Rule_A_modify_0", first);
         registry.register("Rule_B_modify_0", second);

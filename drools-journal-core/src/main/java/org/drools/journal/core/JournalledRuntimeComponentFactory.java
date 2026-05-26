@@ -45,9 +45,9 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         if (environment == null || environment.get(JournalledSessionFactory.JOURNAL_KEY) == null) {
             return super.createStatefulSession(ruleBase, environment, sessionConfig, fromPool);
         }
-        final InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
+        InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
         if (fromPool || kbase.getSessionPool() == null) {
-            final JournalledKieSession session = new JournalledKieSession(
+            JournalledKieSession session = new JournalledKieSession(
                     kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment);
             if (sessionConfig.isKeepReference()) {
                 kbase.addStatefulSession(session);

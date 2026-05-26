@@ -76,7 +76,7 @@ public class JournalledAgenda extends DefaultAgenda {
         public void beforeMatchFired(final BeforeMatchFiredEvent event) {
             // If a consequence exception propagates uncaught, afterMatchFired never fires and currentActivationId
             // is left stale — acceptable because an uncaught consequence exception leaves the session unusable.
-            final JournallingRuntimeEventListener l = runtimeListener();
+            JournallingRuntimeEventListener l = runtimeListener();
             if (l != null) {
                 l.setCurrentActivationId(++nextActivationId);
             }
@@ -84,14 +84,14 @@ public class JournalledAgenda extends DefaultAgenda {
 
         @Override
         public void afterMatchFired(final AfterMatchFiredEvent event) {
-            final List<? extends FactHandle> handles = event.getMatch().getFactHandles();
-            final long[] ids = handles.stream()
+            List<? extends FactHandle> handles = event.getMatch().getFactHandles();
+            long[] ids = handles.stream()
                     .mapToLong(h -> ((InternalFactHandle) h).getId())
                     .toArray();
             try {
                 journal.append(new RuleMatchRecord(nextActivationId, event.getMatch().getRule().getPackageName(), event.getMatch().getRule().getName(), ids));
             } finally {
-                final JournallingRuntimeEventListener l = runtimeListener();
+                JournallingRuntimeEventListener l = runtimeListener();
                 if (l != null) {
                     l.clearCurrentActivationId();
                 }

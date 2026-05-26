@@ -46,22 +46,22 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener {
 
     @Override
     public void objectInserted(final ObjectInsertedEvent event) {
-        final InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        final boolean logical = currentActivationId >= 0;
+        InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
+        boolean logical = currentActivationId >= 0;
         journal.append(new InsertRecord(handle.getId(), logical, currentActivationId,
                 JournalPayloadBuilder.build(event.getObject(), handle, strategy)));
     }
 
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
-        final InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
+        InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
         journal.append(new InsertRecord(handle.getId(), false, -1L,
                 JournalPayloadBuilder.build(event.getObject(), handle, strategy)));
     }
 
     @Override
     public void objectDeleted(final ObjectDeletedEvent event) {
-        final InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
+        InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
         journal.append(new RetractRecord(handle.getId()));
     }
 }

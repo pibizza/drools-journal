@@ -36,7 +36,7 @@ public class ReplayFilter implements AgendaFilter {
 
     public ReplayFilter(final Collection<RuleMatchRecord> records) {
         this.firedMatches = new HashSet<>(records.size() * 2);
-        for (final RuleMatchRecord r : records) {
+        for (RuleMatchRecord r : records) {
             firedMatches.add(new MatchKey(r.packageName(), r.ruleName(), r.factHandleIds()));
         }
     }

@@ -43,8 +43,8 @@ public final class JournalPrinter {
     private JournalPrinter() {}
 
     public static String print(final JournalStorage storage) {
-        final StringBuilder sb = new StringBuilder();
-        final var scanner = storage.scan(0);
+        StringBuilder sb = new StringBuilder();
+        var scanner = storage.scan(0);
         while (scanner.hasNext()) {
             sb.append(render(scanner.next())).append('\n');
         }
@@ -65,7 +65,7 @@ public final class JournalPrinter {
     }
 
     private static String renderInsert(final InsertRecord r) {
-        final StringBuilder sb = new StringBuilder("INSERT  id=").append(r.factHandleId());
+        StringBuilder sb = new StringBuilder("INSERT  id=").append(r.factHandleId());
         if (r.logical()) {
             sb.append("  logical  justifiedBy=").append(r.justifyingRuleMatchId());
         }
@@ -74,7 +74,7 @@ public final class JournalPrinter {
     }
 
     private static String renderMatch(final RuleMatchRecord r) {
-        final String facts = Arrays.stream(r.factHandleIds())
+        String facts = Arrays.stream(r.factHandleIds())
                 .mapToObj(Long::toString)
                 .collect(Collectors.joining(",", "[", "]"));
         return "MATCH  id=" + r.id() + "  pkg=" + r.packageName() + "  rule=" + r.ruleName() + "  facts=" + facts;
@@ -83,7 +83,7 @@ public final class JournalPrinter {
     private static String renderPayload(final InsertRecord r) {
         if (r.payload() instanceof EmbeddedPayload p) {
             try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(p.bytes()))) {
-                final Object obj = ois.readObject();
+                Object obj = ois.readObject();
                 return obj.getClass().getSimpleName() + "(" + obj + ")";
             } catch (IOException | ClassNotFoundException e) {
                 return "EmbeddedPayload(unreadable)";
@@ -96,7 +96,7 @@ public final class JournalPrinter {
     }
 
     private static String simpleClassName(final String fqn) {
-        final int dot = fqn.lastIndexOf('.');
+        int dot = fqn.lastIndexOf('.');
         return dot >= 0 ? fqn.substring(dot + 1) : fqn;
     }
 }

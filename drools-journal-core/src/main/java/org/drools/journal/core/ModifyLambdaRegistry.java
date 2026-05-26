@@ -27,7 +27,7 @@ public class ModifyLambdaRegistry {
     }
 
     public ModifyLambda lookup(final String lambdaClassRef) {
-        final ModifyLambda lambda = lambdas.get(lambdaClassRef);
+        ModifyLambda lambda = lambdas.get(lambdaClassRef);
         if (lambda == null) {
             throw new JournalSchemaEvolutionException(lambdaClassRef);
         }

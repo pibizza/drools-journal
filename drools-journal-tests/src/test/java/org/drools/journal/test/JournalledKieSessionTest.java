@@ -48,7 +48,7 @@ class JournalledKieSessionTest {
 
     @Test
     void insert_and_fire_produce_journal_records() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
@@ -64,11 +64,11 @@ class JournalledKieSessionTest {
 
     @Test
     void retract_produces_retract_record() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
-            final FactHandle handle = session.insert(42);
+            FactHandle handle = session.insert(42);
             session.delete(handle);
         }
 
@@ -80,11 +80,11 @@ class JournalledKieSessionTest {
 
     @Test
     void update_produces_insert_snapshot_with_same_handle_id() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
-            final FactHandle handle = session.insert(42);
+            FactHandle handle = session.insert(42);
             session.update(handle, 99);
         }
 
@@ -96,7 +96,7 @@ class JournalledKieSessionTest {
 
     @Test
     void multiple_activations_get_monotonically_increasing_match_ids() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
@@ -115,7 +115,7 @@ class JournalledKieSessionTest {
 
     @Test
     void insertLogical_records_logical_flag_and_justifying_match_id() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build(), storage)) {

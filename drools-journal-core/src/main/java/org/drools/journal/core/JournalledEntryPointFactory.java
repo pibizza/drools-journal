@@ -32,7 +32,7 @@ public class JournalledEntryPointFactory extends NamedEntryPointFactory {
                                             final FactHandleFactory factHandleFactory,
                                             final EntryPointId id,
                                             final EntryPointNode addedNode) {
-        final Object journal = ((WorkingMemory) reteEvaluator).getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
+        Object journal = ((WorkingMemory) reteEvaluator).getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
         if (journal != null) {
             return new JournalledNamedEntryPoint(ruleBase, reteEvaluator, factHandleFactory, id, addedNode);
         }

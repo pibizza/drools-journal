@@ -33,15 +33,15 @@ class JournallingRuntimeEventListenerTest {
 
     @Test
     void objectInserted_withNoActiveActivation_appendsNonLogicalInsertRecord() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        final JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
-        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
+        DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectInserted(insertedEvent(handle, "hello"));
 
         assertThat(storage.size()).isEqualTo(1);
-        final InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.scan(0).next();
         assertThat(record.factHandleId()).isEqualTo(42L);
         assertThat(record.logical()).isFalse();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(-1L);
@@ -49,44 +49,44 @@ class JournallingRuntimeEventListenerTest {
 
     @Test
     void objectDeleted_appendsRetractRecord() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        final JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
-        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
+        DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectDeleted(deletedEvent(handle, "hello"));
 
         assertThat(storage.size()).isEqualTo(1);
-        final RetractRecord record = (RetractRecord) storage.scan(0).next();
+        RetractRecord record = (RetractRecord) storage.scan(0).next();
         assertThat(record.factHandleId()).isEqualTo(42L);
     }
 
     @Test
     void objectInserted_withActiveActivation_appendsLogicalInsertRecord() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        final JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
         listener.setCurrentActivationId(99L);
-        final DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
+        DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectInserted(insertedEvent(handle, "hello"));
 
-        final InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.scan(0).next();
         assertThat(record.logical()).isTrue();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(99L);
     }
 
     @Test
     void objectUpdated_appendsNonLogicalInsertRecord() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        final JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
                 storage, (fact, handle) -> StorageDecision.EMBED);
 
-        final DefaultFactHandle handle = new DefaultFactHandle(42L, "updated");
+        DefaultFactHandle handle = new DefaultFactHandle(42L, "updated");
         listener.objectUpdated(updatedEvent(handle, "updated", "old"));
 
         assertThat(storage.size()).isEqualTo(1);
-        final InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.scan(0).next();
         assertThat(record.factHandleId()).isEqualTo(42L);
         assertThat(record.logical()).isFalse();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(-1L);

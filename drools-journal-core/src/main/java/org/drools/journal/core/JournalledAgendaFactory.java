@@ -29,7 +29,7 @@ public class JournalledAgendaFactory implements AgendaFactory {
     public InternalAgenda createAgenda(final InternalRuleBase kieBase,
                                        final InternalWorkingMemory workingMemory,
                                        final FactHandleFactory factHandleFactory) {
-        final JournalStorage journal = (JournalStorage) workingMemory.getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
+        JournalStorage journal = (JournalStorage) workingMemory.getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
         if (journal == null) {
             return DefaultAgendaFactory.getInstance().createAgenda(kieBase, workingMemory, factHandleFactory);
         }

@@ -52,7 +52,7 @@ class JournalledKieSessionRestoreTest {
 
     @Test
     void open_fromEmptyStorage_sessionIsEmpty() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
@@ -62,7 +62,7 @@ class JournalledKieSessionRestoreTest {
 
     @Test
     void open_fromJournalWithSurvivingFact_factIsInWorkingMemory() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
         storage.append(new SafepointRecord(1L, 0L));
 
@@ -74,7 +74,7 @@ class JournalledKieSessionRestoreTest {
 
     @Test
     void open_fromJournalWithAlreadyFiredRule_ruleDoesNotFireAgain() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
         storage.append(new RuleMatchRecord(1L, "org.drools.journal.test", "ProcessFact", new long[]{1L}));
         storage.append(new SafepointRecord(1L, 0L));
@@ -87,7 +87,7 @@ class JournalledKieSessionRestoreTest {
 
     @Test
     void open_fromJournalWithRetractedFact_sessionIsEmpty() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
         storage.append(new RetractRecord(1L));
         storage.append(new SafepointRecord(1L, 0L));
@@ -100,7 +100,7 @@ class JournalledKieSessionRestoreTest {
 
     @Test
     void open_fromJournalWithLogicalFact_retractingSupportRemovesLogicalFact() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
         storage.append(new RuleMatchRecord(1L, "org.drools.journal.test", "LogicalInserter", new long[]{1L}));
         storage.append(new InsertRecord(2L, true, 1L, JournalPayloadBuilder.embed("hello")));
@@ -108,7 +108,7 @@ class JournalledKieSessionRestoreTest {
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build(), storage)) {
-            final Object integer = session.getObjects(o -> o instanceof Integer).iterator().next();
+            Object integer = session.getObjects(o -> o instanceof Integer).iterator().next();
             session.delete(session.getFactHandle(integer));
             session.fireAllRules();
             assertThat(session.getObjects()).isEmpty();
