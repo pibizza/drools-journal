@@ -16,11 +16,13 @@
 package org.drools.journal.core;
 
 import org.drools.journal.api.InsertRecord;
+import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.SafepointRecord;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RestoreEngineTest {
 
@@ -76,6 +78,17 @@ class RestoreEngineTest {
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).isEmpty();
+    }
+
+    @Test
+    void modifyWithUnknownLambdaRef_throwsJournalSchemaEvolutionException() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
+        storage.append(new ModifyRecord(1L, "Rule_Unknown_modify_0", new byte[0]));
+        storage.append(new SafepointRecord(1L, 0L));
+
+        assertThatThrownBy(() -> new RestoreEngine(storage, new ModifyLambdaRegistry()).scan())
+                .isInstanceOf(JournalSchemaEvolutionException.class);
     }
 
 }

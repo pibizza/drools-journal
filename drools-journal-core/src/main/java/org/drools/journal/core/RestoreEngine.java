@@ -19,6 +19,7 @@ import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
@@ -68,11 +69,11 @@ class RestoreEngine {
         return new ScanResult(survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
     }
 
-    private static void flush(final List<JournalRecord> pending,
-                              final Map<Long, Object> survivingFacts,
-                              final List<RuleMatchRecord> firedMatches,
-                              final List<PendingTmsLink> pendingTmsLinks,
-                              final Map<Long, RuleMatchRecord> firedMatchesById) {
+    private void flush(final List<JournalRecord> pending,
+                       final Map<Long, Object> survivingFacts,
+                       final List<RuleMatchRecord> firedMatches,
+                       final List<PendingTmsLink> pendingTmsLinks,
+                       final Map<Long, RuleMatchRecord> firedMatchesById) {
         for (JournalRecord record : pending) {
             if (record instanceof InsertRecord insert) {
                 survivingFacts.put(insert.factHandleId(), JournalPayloadBuilder.deserialize(insert.payload()));
@@ -85,6 +86,10 @@ class RestoreEngine {
             } else if (record instanceof RuleMatchRecord match) {
                 firedMatches.add(match);
                 firedMatchesById.put(match.id(), match);
+            } else if (record instanceof ModifyRecord modify) {
+                if (lambdaRegistry.lookup(modify.lambdaClassRef()) == null) {
+                    throw new JournalSchemaEvolutionException(modify.lambdaClassRef());
+                }
             }
         }
     }
