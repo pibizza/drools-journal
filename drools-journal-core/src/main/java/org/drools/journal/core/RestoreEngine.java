@@ -20,8 +20,10 @@ import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RetractRecord;
+import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
 import org.kie.api.runtime.KieSession;
+import org.kie.api.runtime.rule.FactHandle;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,7 +33,7 @@ import java.util.Map;
 // NOT thread-safe — Drools sessions fire on a single thread
 class RestoreEngine {
 
-    record ScanResult(Map<Long, Object> survivingFacts) {}
+    record ScanResult(Map<Long, Object> survivingFacts, List<RuleMatchRecord> firedMatches) {}
 
     private final JournalStorage journal;
     private final ModifyLambdaRegistry lambdaRegistry;
@@ -41,22 +43,37 @@ class RestoreEngine {
         this.lambdaRegistry = lambdaRegistry;
     }
 
-    public void restore(final KieSession session) {
+    public ReplayFilter restore(final KieSession session) {
         final ScanResult scanResult = scan();
-        for (final Object fact : scanResult.survivingFacts().values()) {
-            session.insert(fact);
+
+        final Map<Long, Long> oldToNew = new HashMap<>();
+        for (final Map.Entry<Long, Object> entry : scanResult.survivingFacts().entrySet()) {
+            final FactHandle handle = session.insert(entry.getValue());
+            oldToNew.put(entry.getKey(), handle.getId());
         }
+
+        final List<RuleMatchRecord> translatedMatches = new ArrayList<>(scanResult.firedMatches().size());
+        for (final RuleMatchRecord record : scanResult.firedMatches()) {
+            final long[] newIds = new long[record.factHandleIds().length];
+            for (int i = 0; i < record.factHandleIds().length; i++) {
+                final Long newId = oldToNew.get(record.factHandleIds()[i]);
+                newIds[i] = newId != null ? newId : record.factHandleIds()[i];
+            }
+            translatedMatches.add(new RuleMatchRecord(record.id(), record.packageName(), record.ruleName(), newIds));
+        }
+        return new ReplayFilter(translatedMatches);
     }
 
     ScanResult scan() {
         final Map<Long, Object> survivingFacts = new HashMap<>();
+        final List<RuleMatchRecord> firedMatches = new ArrayList<>();
         final List<JournalRecord> pending = new ArrayList<>();
 
         final JournalScanner scanner = journal.scan(0);
         while (scanner.hasNext()) {
             final JournalRecord record = scanner.next();
             if (record instanceof SafepointRecord) {
-                flush(pending, survivingFacts);
+                flush(pending, survivingFacts, firedMatches);
                 pending.clear();
             } else {
                 pending.add(record);
@@ -64,15 +81,19 @@ class RestoreEngine {
         }
         // Trailing pending records after the last safepoint are silently discarded
 
-        return new ScanResult(survivingFacts);
+        return new ScanResult(survivingFacts, firedMatches);
     }
 
-    private static void flush(final List<JournalRecord> pending, final Map<Long, Object> survivingFacts) {
+    private static void flush(final List<JournalRecord> pending,
+                              final Map<Long, Object> survivingFacts,
+                              final List<RuleMatchRecord> firedMatches) {
         for (final JournalRecord record : pending) {
             if (record instanceof final InsertRecord insert) {
                 survivingFacts.put(insert.factHandleId(), JournalPayloadBuilder.deserialize(insert.payload()));
             } else if (record instanceof final RetractRecord retract) {
                 survivingFacts.remove(retract.factHandleId());
+            } else if (record instanceof final RuleMatchRecord match) {
+                firedMatches.add(match);
             }
         }
     }

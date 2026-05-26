@@ -25,6 +25,7 @@ import org.kie.api.runtime.Environment;
 public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     private final JournalStorage journal;
+    private ReplayFilter replayFilter;
 
     public JournalledKieSession(final long id,
                                 final InternalKnowledgeBase kBase,
@@ -37,6 +38,18 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     public JournalStorage getJournalStorage() {
         return journal;
+    }
+
+    void setReplayFilter(final ReplayFilter filter) {
+        this.replayFilter = filter;
+    }
+
+    @Override
+    public int fireAllRules() {
+        if (replayFilter != null) {
+            return super.fireAllRules(replayFilter);
+        }
+        return super.fireAllRules();
     }
 
     @Override

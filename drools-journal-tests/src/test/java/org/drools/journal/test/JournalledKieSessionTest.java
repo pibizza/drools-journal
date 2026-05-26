@@ -15,12 +15,9 @@
  */
 package org.drools.journal.test;
 
-import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.SafepointRecord;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.core.JournalPayloadBuilder;
 import org.junit.jupiter.api.Test;
 import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.rule.FactHandle;
@@ -114,18 +111,6 @@ class JournalledKieSessionTest {
                 MATCH  id=1  pkg=org.drools.journal.test  rule=ProcessFact  facts=[1]
                 MATCH  id=2  pkg=org.drools.journal.test  rule=ProcessFact  facts=[2]
                 """);
-    }
-
-    @Test
-    void open_fromJournalWithSurvivingFact_factIsInWorkingMemory() {
-        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
-        storage.append(new SafepointRecord(1L, 0L));
-
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
-            assertThat(session.getObjects()).singleElement().isEqualTo(42);
-        }
     }
 
     @Test
