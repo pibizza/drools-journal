@@ -22,14 +22,17 @@ import org.kie.api.runtime.rule.Match;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 // NOT thread-safe — installed on a single-threaded session
 public class ReplayFilter implements AgendaFilter {
 
     private final Set<MatchKey> firedMatches;
+    private final Map<MatchKey, Match> matchCache = new HashMap<>();
 
     public ReplayFilter(final Collection<RuleMatchRecord> records) {
         this.firedMatches = new HashSet<>(records.size() * 2);
@@ -40,12 +43,21 @@ public class ReplayFilter implements AgendaFilter {
 
     @Override
     public boolean accept(final Match match) {
-        final List<? extends FactHandle> handles = match.getFactHandles();
-        final long[] ids = new long[handles.size()];
+        List<? extends FactHandle> handles = match.getFactHandles();
+        long[] ids = new long[handles.size()];
         for (int i = 0; i < handles.size(); i++) {
             ids[i] = handles.get(i).getId();
         }
-        return !firedMatches.contains(new MatchKey(match.getRule().getPackageName(), match.getRule().getName(), ids));
+        MatchKey key = new MatchKey(match.getRule().getPackageName(), match.getRule().getName(), ids);
+        if (firedMatches.contains(key)) {
+            matchCache.put(key, match);
+            return false;
+        }
+        return true;
+    }
+
+    Match getCachedMatch(final String packageName, final String ruleName, final long[] newIds) {
+        return matchCache.get(new MatchKey(packageName, ruleName, newIds));
     }
 
     private record MatchKey(String packageName, String ruleName, long[] factHandleIds) {

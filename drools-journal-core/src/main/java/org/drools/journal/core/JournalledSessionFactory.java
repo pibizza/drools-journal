@@ -15,6 +15,10 @@
  */
 package org.drools.journal.core;
 
+import org.drools.core.common.InternalWorkingMemoryEntryPoint;
+import org.drools.core.common.TruthMaintenanceSystem;
+import org.drools.core.common.TruthMaintenanceSystemFactory;
+import org.drools.core.rule.consequence.InternalMatch;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.StorageDecision;
@@ -22,11 +26,14 @@ import org.kie.api.KieBase;
 import org.kie.api.KieServices;
 import org.kie.api.runtime.Environment;
 import org.kie.api.runtime.rule.FactHandle;
+import org.kie.api.runtime.rule.Match;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class JournalledSessionFactory {
 
@@ -35,29 +42,77 @@ public final class JournalledSessionFactory {
     private JournalledSessionFactory() {}
 
     public static JournalledKieSession open(final KieBase kbase, final JournalStorage storage) {
-        final Environment env = KieServices.get().newEnvironment();
+        Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
-        final JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
+        JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
         if (storage.latestPosition() >= 0) {
-            final RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
-
-            final Map<Long, FactHandle> oldToNew = new HashMap<>();
-            for (final Map.Entry<Long, Object> entry : scanResult.survivingFacts().entrySet()) {
-                oldToNew.put(entry.getKey(), session.insert(entry.getValue()));
-            }
-
-            final List<RuleMatchRecord> translatedMatches = new ArrayList<>(scanResult.firedMatches().size());
-            for (final RuleMatchRecord record : scanResult.firedMatches()) {
-                final long[] newIds = new long[record.factHandleIds().length];
-                for (int i = 0; i < record.factHandleIds().length; i++) {
-                    final FactHandle handle = oldToNew.get(record.factHandleIds()[i]);
-                    newIds[i] = handle != null ? handle.getId() : record.factHandleIds()[i];
-                }
-                translatedMatches.add(new RuleMatchRecord(record.id(), record.packageName(), record.ruleName(), newIds));
-            }
-            session.setReplayFilter(new ReplayFilter(translatedMatches));
+            restore(session, storage);
         }
         session.addEventListener(new JournallingRuntimeEventListener(storage, (fact, handle) -> StorageDecision.EMBED));
         return session;
+    }
+
+    private static void restore(final JournalledKieSession session, final JournalStorage storage) {
+        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        Map<Long, FactHandle> oldToNew = insertNonLogicalFacts(session, scanResult);
+        ReplayFilter replayFilter = buildReplayFilter(scanResult, oldToNew);
+        session.fireAllRules(replayFilter);
+        wireTms(session, scanResult, oldToNew, replayFilter);
+        session.setReplayFilter(replayFilter);
+    }
+
+    private static Map<Long, FactHandle> insertNonLogicalFacts(final JournalledKieSession session,
+                                                               final RestoreEngine.ScanResult scanResult) {
+        Set<Long> logicalIds = new HashSet<>();
+        for (RestoreEngine.PendingTmsLink link : scanResult.pendingTmsLinks()) {
+            logicalIds.add(link.factHandleId());
+        }
+        Map<Long, FactHandle> oldToNew = new HashMap<>();
+        for (Map.Entry<Long, Object> entry : scanResult.survivingFacts().entrySet()) {
+            if (!logicalIds.contains(entry.getKey())) {
+                oldToNew.put(entry.getKey(), session.insert(entry.getValue()));
+            }
+        }
+        return oldToNew;
+    }
+
+    private static ReplayFilter buildReplayFilter(final RestoreEngine.ScanResult scanResult,
+                                                  final Map<Long, FactHandle> oldToNew) {
+        List<RuleMatchRecord> translatedMatches = new ArrayList<>(scanResult.firedMatches().size());
+        for (RuleMatchRecord record : scanResult.firedMatches()) {
+            long[] newIds = new long[record.factHandleIds().length];
+            for (int i = 0; i < record.factHandleIds().length; i++) {
+                FactHandle handle = oldToNew.get(record.factHandleIds()[i]);
+                newIds[i] = handle != null ? handle.getId() : record.factHandleIds()[i];
+            }
+            translatedMatches.add(new RuleMatchRecord(record.id(), record.packageName(), record.ruleName(), newIds));
+        }
+        return new ReplayFilter(translatedMatches);
+    }
+
+    private static void wireTms(final JournalledKieSession session,
+                                final RestoreEngine.ScanResult scanResult,
+                                final Map<Long, FactHandle> oldToNew,
+                                final ReplayFilter replayFilter) {
+        if (scanResult.pendingTmsLinks().isEmpty()) {
+            return;
+        }
+        InternalWorkingMemoryEntryPoint defaultEP =
+                (InternalWorkingMemoryEntryPoint) session.getDefaultEntryPoint();
+        TruthMaintenanceSystem tms =
+                TruthMaintenanceSystemFactory.get().getOrCreateTruthMaintenanceSystem(defaultEP);
+
+        for (RestoreEngine.PendingTmsLink link : scanResult.pendingTmsLinks()) {
+            RuleMatchRecord justifier = scanResult.firedMatchesById().get(link.justifyingRuleMatchId());
+            long[] newIds = new long[justifier.factHandleIds().length];
+            for (int i = 0; i < justifier.factHandleIds().length; i++) {
+                FactHandle h = oldToNew.get(justifier.factHandleIds()[i]);
+                newIds[i] = h != null ? h.getId() : justifier.factHandleIds()[i];
+            }
+            Match cachedMatch = replayFilter.getCachedMatch(
+                    justifier.packageName(), justifier.ruleName(), newIds);
+            Object logicalObject = scanResult.survivingFacts().get(link.factHandleId());
+            tms.insertPositive(logicalObject, (InternalMatch) cachedMatch);
+        }
     }
 }

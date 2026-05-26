@@ -31,7 +31,12 @@ import java.util.Map;
 // NOT thread-safe — Drools sessions fire on a single thread
 class RestoreEngine {
 
-    record ScanResult(Map<Long, Object> survivingFacts, List<RuleMatchRecord> firedMatches) {}
+    record PendingTmsLink(long factHandleId, long justifyingRuleMatchId) {}
+
+    record ScanResult(Map<Long, Object> survivingFacts,
+                      List<RuleMatchRecord> firedMatches,
+                      List<PendingTmsLink> pendingTmsLinks,
+                      Map<Long, RuleMatchRecord> firedMatchesById) {}
 
     private final JournalStorage journal;
     private final ModifyLambdaRegistry lambdaRegistry;
@@ -42,15 +47,17 @@ class RestoreEngine {
     }
 
     ScanResult scan() {
-        final Map<Long, Object> survivingFacts = new HashMap<>();
-        final List<RuleMatchRecord> firedMatches = new ArrayList<>();
-        final List<JournalRecord> pending = new ArrayList<>();
+        Map<Long, Object> survivingFacts = new HashMap<>();
+        List<RuleMatchRecord> firedMatches = new ArrayList<>();
+        List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
+        Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
+        List<JournalRecord> pending = new ArrayList<>();
 
-        final JournalScanner scanner = journal.scan(0);
+        JournalScanner scanner = journal.scan(0);
         while (scanner.hasNext()) {
-            final JournalRecord record = scanner.next();
+            JournalRecord record = scanner.next();
             if (record instanceof SafepointRecord) {
-                flush(pending, survivingFacts, firedMatches);
+                flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
                 pending.clear();
             } else {
                 pending.add(record);
@@ -58,19 +65,26 @@ class RestoreEngine {
         }
         // Trailing pending records after the last safepoint are silently discarded
 
-        return new ScanResult(survivingFacts, firedMatches);
+        return new ScanResult(survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
     }
 
     private static void flush(final List<JournalRecord> pending,
                               final Map<Long, Object> survivingFacts,
-                              final List<RuleMatchRecord> firedMatches) {
-        for (final JournalRecord record : pending) {
-            if (record instanceof final InsertRecord insert) {
+                              final List<RuleMatchRecord> firedMatches,
+                              final List<PendingTmsLink> pendingTmsLinks,
+                              final Map<Long, RuleMatchRecord> firedMatchesById) {
+        for (JournalRecord record : pending) {
+            if (record instanceof InsertRecord insert) {
                 survivingFacts.put(insert.factHandleId(), JournalPayloadBuilder.deserialize(insert.payload()));
-            } else if (record instanceof final RetractRecord retract) {
+                if (insert.logical()) {
+                    pendingTmsLinks.add(new PendingTmsLink(insert.factHandleId(), insert.justifyingRuleMatchId()));
+                }
+            } else if (record instanceof RetractRecord retract) {
                 survivingFacts.remove(retract.factHandleId());
-            } else if (record instanceof final RuleMatchRecord match) {
+                pendingTmsLinks.removeIf(link -> link.factHandleId() == retract.factHandleId());
+            } else if (record instanceof RuleMatchRecord match) {
                 firedMatches.add(match);
+                firedMatchesById.put(match.id(), match);
             }
         }
     }

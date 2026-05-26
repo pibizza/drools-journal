@@ -40,6 +40,16 @@ class JournalledKieSessionRestoreTest {
             end
             """;
 
+    private static final String LOGICAL_RULE = """
+            package org.drools.journal.test
+            rule "LogicalInserter"
+            when
+                $i: Integer()
+            then
+                drools.insertLogical("hello");
+            end
+            """;
+
     @Test
     void open_fromEmptyStorage_sessionIsEmpty() {
         final InMemoryJournalStorage storage = new InMemoryJournalStorage();
@@ -84,6 +94,23 @@ class JournalledKieSessionRestoreTest {
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
                 new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+            assertThat(session.getObjects()).isEmpty();
+        }
+    }
+
+    @Test
+    void open_fromJournalWithLogicalFact_retractingSupportRemovesLogicalFact() {
+        final InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
+        storage.append(new RuleMatchRecord(1L, "org.drools.journal.test", "LogicalInserter", new long[]{1L}));
+        storage.append(new InsertRecord(2L, true, 1L, JournalPayloadBuilder.embed("hello")));
+        storage.append(new SafepointRecord(1L, 0L));
+
+        try (JournalledKieSession session = JournalledSessionFactory.open(
+                new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build(), storage)) {
+            final Object integer = session.getObjects(o -> o instanceof Integer).iterator().next();
+            session.delete(session.getFactHandle(integer));
+            session.fireAllRules();
             assertThat(session.getObjects()).isEmpty();
         }
     }
