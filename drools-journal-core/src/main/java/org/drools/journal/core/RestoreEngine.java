@@ -22,8 +22,6 @@ import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
-import org.kie.api.runtime.KieSession;
-import org.kie.api.runtime.rule.FactHandle;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,27 +39,6 @@ class RestoreEngine {
     RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
         this.journal = journal;
         this.lambdaRegistry = lambdaRegistry;
-    }
-
-    public ReplayFilter restore(final KieSession session) {
-        final ScanResult scanResult = scan();
-
-        final Map<Long, Long> oldToNew = new HashMap<>();
-        for (final Map.Entry<Long, Object> entry : scanResult.survivingFacts().entrySet()) {
-            final FactHandle handle = session.insert(entry.getValue());
-            oldToNew.put(entry.getKey(), handle.getId());
-        }
-
-        final List<RuleMatchRecord> translatedMatches = new ArrayList<>(scanResult.firedMatches().size());
-        for (final RuleMatchRecord record : scanResult.firedMatches()) {
-            final long[] newIds = new long[record.factHandleIds().length];
-            for (int i = 0; i < record.factHandleIds().length; i++) {
-                final Long newId = oldToNew.get(record.factHandleIds()[i]);
-                newIds[i] = newId != null ? newId : record.factHandleIds()[i];
-            }
-            translatedMatches.add(new RuleMatchRecord(record.id(), record.packageName(), record.ruleName(), newIds));
-        }
-        return new ReplayFilter(translatedMatches);
     }
 
     ScanResult scan() {
