@@ -39,6 +39,7 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     private final List<JournalRecord> records = new ArrayList<>();
     private boolean closed = false;
+    private long safepointSequenceNo = 0L;
 
     @Override
     public synchronized long append(final JournalRecord record) {
@@ -67,6 +68,11 @@ public class InMemoryJournalStorage implements JournalStorage {
     /** Returns the total number of records appended so far. */
     synchronized int size() {
         return records.size();
+    }
+
+    @Override
+    public synchronized void safepoint() {
+        append(new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis()));
     }
 
     void insert(final long factHandleId, final Object fact) {

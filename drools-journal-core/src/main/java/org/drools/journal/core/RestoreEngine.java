@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.CompactionCommitRecord;
+import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -26,8 +28,10 @@ import org.drools.journal.api.SafepointRecord;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 // NOT thread-safe — Drools sessions fire on a single thread
 class RestoreEngine {
@@ -48,20 +52,58 @@ class RestoreEngine {
     }
 
     ScanResult scan() {
+        // Phase 0: a page is retired only when its compaction commit is sealed by a safepoint.
+        // An unsealed commit (crash between COMMIT and the next safepoint) leaves the original pages canonical.
+        Set<String> retiredPageIds = new HashSet<>();
+        Set<String> sealedMergeIds = new HashSet<>();
+        Map<String, String[]> unsealedCommits = new HashMap<>();
+
+        try (JournalScanner phase0 = journal.scan(0)) {
+            while (phase0.hasNext()) {
+                JournalRecord record = phase0.next();
+                if (record instanceof CompactionCommitRecord commit) {
+                    unsealedCommits.put(commit.mergedPageId(), commit.replacedPageIds());
+                } else if (record instanceof SafepointRecord) {
+                    unsealedCommits.forEach((mergedId, replacedIds) -> {
+                        sealedMergeIds.add(mergedId);
+                        for (String replacedId : replacedIds) {
+                            retiredPageIds.add(replacedId);
+                        }
+                    });
+                    unsealedCommits.clear();
+                }
+            }
+        }
+
+        // Phase 1: replay in order, skipping retired pages.
+        // Entering the content of a sealed merge resets the retired flag so merged records are applied.
         Map<Long, Object> survivingFacts = new HashMap<>();
         List<RuleMatchRecord> firedMatches = new ArrayList<>();
         List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
         Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
         List<JournalRecord> pending = new ArrayList<>();
 
-        JournalScanner scanner = journal.scan(0);
-        while (scanner.hasNext()) {
-            JournalRecord record = scanner.next();
-            if (record instanceof SafepointRecord) {
-                flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
-                pending.clear();
-            } else {
-                pending.add(record);
+        boolean inRetiredPage = false;
+
+        try (JournalScanner scanner = journal.scan(0)) {
+            while (scanner.hasNext()) {
+                JournalRecord record = scanner.next();
+
+                if (record instanceof SafepointRecord sp) {
+                    inRetiredPage = retiredPageIds.contains(String.valueOf(sp.sequenceNo()));
+                    if (!inRetiredPage) {
+                        flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
+                    }
+                    pending.clear();
+                } else if (record instanceof CompactionPrepareRecord prepare) {
+                    if (sealedMergeIds.contains(prepare.preparingPageId())) {
+                        inRetiredPage = false;
+                    }
+                } else if (record instanceof CompactionCommitRecord) {
+                    // marker only
+                } else if (!inRetiredPage) {
+                    pending.add(record);
+                }
             }
         }
         // Trailing pending records after the last safepoint are silently discarded

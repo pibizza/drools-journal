@@ -38,6 +38,14 @@ public interface JournalStorage extends AutoCloseable {
     long append(JournalRecord record);
 
     /**
+     * Appends a {@link SafepointRecord} with the next sequence number and the
+     * current wall-clock time. All records appended before this call are
+     * considered durable; records appended after are pending until the next
+     * safepoint.
+     */
+    void safepoint();
+
+    /**
      * Opens a forward-only scanner starting at {@code fromPosition}.
      * The first call to {@link JournalScanner#next()} returns the record at
      * {@code fromPosition}, or the first record after it if that exact position

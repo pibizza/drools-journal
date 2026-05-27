@@ -17,7 +17,6 @@ package org.drools.journal.core;
 
 import org.drools.core.SessionConfiguration;
 import org.drools.journal.api.JournalStorage;
-import org.drools.journal.api.SafepointRecord;
 import org.drools.kiesession.rulebase.InternalKnowledgeBase;
 import org.drools.kiesession.session.StatefulKnowledgeSessionImpl;
 import org.kie.api.runtime.Environment;
@@ -27,7 +26,6 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     private final JournalStorage journal;
     private ReplayFilter replayFilter;
-    private long safepointSequenceNo = 0L;
 
     public JournalledKieSession(final long id,
                                 final InternalKnowledgeBase kBase,
@@ -51,7 +49,7 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
         int fired = (replayFilter != null)
                 ? super.fireAllRules(replayFilter)
                 : super.fireAllRules();
-        journal.append(new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis()));
+        journal.safepoint();
         return fired;
     }
 
