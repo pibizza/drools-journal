@@ -18,9 +18,15 @@ package org.drools.journal.core;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.drools.journal.api.CompactionCommitRecord;
+import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.RetractRecord;
+import org.drools.journal.api.RuleMatchRecord;
+import org.drools.journal.api.SafepointRecord;
 
 /**
  * Non-durable, in-process {@link JournalStorage} for use in tests. Thread-safe.
@@ -60,6 +66,34 @@ public class InMemoryJournalStorage implements JournalStorage {
     /** Returns the total number of records appended so far. */
     synchronized int size() {
         return records.size();
+    }
+
+    void insert(final long factHandleId, final Object fact) {
+        append(new InsertRecord(factHandleId, false, -1L, JournalPayloadBuilder.embed(fact)));
+    }
+
+    void logicalInsert(final long factHandleId, final long justifyingRuleMatchId, final Object fact) {
+        append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, JournalPayloadBuilder.embed(fact)));
+    }
+
+    void retract(final long factHandleId) {
+        append(new RetractRecord(factHandleId));
+    }
+
+    void safepoint(final long sequenceNo) {
+        append(new SafepointRecord(sequenceNo, 0L));
+    }
+
+    void ruleMatch(final long id, final String ruleName, final long... factHandleIds) {
+        append(new RuleMatchRecord(id, "test", ruleName, factHandleIds));
+    }
+
+    void compactionPrepare(final String mergedPageId, final String... replacedPageIds) {
+        append(new CompactionPrepareRecord(mergedPageId, replacedPageIds));
+    }
+
+    void compactionCommit(final String mergedPageId, final String... replacedPageIds) {
+        append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
     }
 
     @Override
