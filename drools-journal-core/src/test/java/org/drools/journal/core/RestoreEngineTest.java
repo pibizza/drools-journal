@@ -89,12 +89,41 @@ class RestoreEngineTest {
     }
 
     @Test
+    void prepareInsertAndCommit_factSurvives() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "fact");
+        storage.safepoint(0L);
+        storage.compactionPrepare("m-1", "0");
+        storage.insert(1L, "fact");
+        storage.compactionCommit("m-1", "0");
+        storage.safepoint(1L);
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+    }
+
+    @Test
     void prepareWithInsertButNoCommit_originalPageRemainsCanonical() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", "0");
         storage.insert(1L, "fact");
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+    }
+
+    @Test
+    void commitWithoutSafepoint_originalPageRemainsCanonical() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "fact");
+        storage.safepoint(0L);
+        storage.compactionPrepare("m-1", "0");
+        storage.insert(1L, "fact");
+        storage.compactionCommit("m-1", "0");
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
