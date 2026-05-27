@@ -24,6 +24,7 @@ import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
@@ -74,6 +75,10 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     void logicalInsert(final long factHandleId, final long justifyingRuleMatchId, final Object fact) {
         append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, JournalPayloadBuilder.embed(fact)));
+    }
+
+    void modify(final long factHandleId, final String lambdaClassRef, final byte[] parameters) {
+        append(new ModifyRecord(factHandleId, lambdaClassRef, parameters));
     }
 
     void retract(final long factHandleId) {

@@ -15,8 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.SafepointRecord;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,8 +24,8 @@ class SafepointRollbackTest {
     @Test
     void safepoint_flushesPendingRecords_factSurvivesRestore() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
-        storage.append(new SafepointRecord(0L, 1000L));
+        storage.insert(1L, "hello");
+        storage.safepoint(0L);
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -37,10 +35,10 @@ class SafepointRollbackTest {
     @Test
     void recordsAfterLastSafepoint_areDiscardedOnRestore() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("committed")));
-        storage.append(new SafepointRecord(0L, 1000L));
+        storage.insert(1L, "committed");
+        storage.safepoint(0L);
         // These records come after the last safepoint — simulate crash mid-write
-        storage.append(new InsertRecord(2L, false, -1L, JournalPayloadBuilder.embed("lost")));
+        storage.insert(2L, "lost");
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -51,10 +49,10 @@ class SafepointRollbackTest {
     @Test
     void multipleSafepoints_sequenceNoIncrements_allFactsSurvive() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("a")));
-        storage.append(new SafepointRecord(0L, 1000L));
-        storage.append(new InsertRecord(2L, false, -1L, JournalPayloadBuilder.embed("b")));
-        storage.append(new SafepointRecord(1L, 2000L));
+        storage.insert(1L, "a");
+        storage.safepoint(0L);
+        storage.insert(2L, "b");
+        storage.safepoint(1L);
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 

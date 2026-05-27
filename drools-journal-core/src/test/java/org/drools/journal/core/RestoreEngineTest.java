@@ -15,10 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.ModifyRecord;
-import org.drools.journal.api.RetractRecord;
-import org.drools.journal.api.SafepointRecord;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,8 +34,8 @@ class RestoreEngineTest {
     @Test
     void insertBeforeSafepoint_factSurvives() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
-        storage.append(new SafepointRecord(1L, 0L));
+        storage.insert(1L, "hello");
+        storage.safepoint(1L);
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -49,9 +45,9 @@ class RestoreEngineTest {
     @Test
     void updateInsertBeforeSafepoint_replacesFactInSurvivingFacts() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("world")));
-        storage.append(new SafepointRecord(1L, 0L));
+        storage.insert(1L, "hello");
+        storage.insert(1L, "world");
+        storage.safepoint(1L);
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -61,9 +57,9 @@ class RestoreEngineTest {
     @Test
     void retractBeforeSafepoint_factRemovedFromSurvivingFacts() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
-        storage.append(new RetractRecord(1L));
-        storage.append(new SafepointRecord(1L, 0L));
+        storage.insert(1L, "hello");
+        storage.retract(1L);
+        storage.safepoint(1L);
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -73,7 +69,7 @@ class RestoreEngineTest {
     @Test
     void insertWithoutSafepoint_factIsDiscarded() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
+        storage.insert(1L, "hello");
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -81,11 +77,36 @@ class RestoreEngineTest {
     }
 
     @Test
+    void prepareWithoutCommit_originalPageRemainsCanonical() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "fact");
+        storage.safepoint(0L);
+        storage.compactionPrepare("m-1", "0");
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+    }
+
+    @Test
+    void prepareWithInsertButNoCommit_originalPageRemainsCanonical() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "fact");
+        storage.safepoint(0L);
+        storage.compactionPrepare("m-1", "0");
+        storage.insert(1L, "fact");
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+    }
+
+    @Test
     void modifyWithUnknownLambdaRef_throwsJournalSchemaEvolutionException() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed("hello")));
-        storage.append(new ModifyRecord(1L, "Rule_Unknown_modify_0", new byte[0]));
-        storage.append(new SafepointRecord(1L, 0L));
+        storage.insert(1L, "hello");
+        storage.modify(1L, "Rule_Unknown_modify_0", new byte[0]);
+        storage.safepoint(1L);
 
         assertThatThrownBy(() -> new RestoreEngine(storage, new ModifyLambdaRegistry()).scan())
                 .isInstanceOf(JournalSchemaEvolutionException.class);
