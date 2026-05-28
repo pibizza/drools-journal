@@ -14,3 +14,4 @@
 | [2026-05-24-PaoloB01-from-spec-to-code.md](2026-05-24-PaoloB01-from-spec-to-code.md) | 2026-05-24 | From Spec to Code |
 | [2026-05-26-PaoloB01-the-restore-completes.md](2026-05-26-PaoloB01-the-restore-completes.md) | 2026-05-26 | The Restore Completes |
 | [2026-05-26-PaoloB02-from-restore-to-compact.md](2026-05-26-PaoloB02-from-restore-to-compact.md) | 2026-05-26 | From Restore to Compact |
+| [2026-05-27-PaoloB01-phase-zero-gets-design.md](2026-05-27-PaoloB01-phase-zero-gets-design.md) | 2026-05-27 | Issue B: test helpers, crash-after-commit protocol fix, Phase 0 implementation |
