@@ -24,6 +24,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CompactionCoordinatorTest {
 
     @Test
+    void safepointRollsCurrentPage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        assertThat(storage.currentPageNumber()).isEqualTo(0);
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+        assertThat(storage.currentPageNumber()).isEqualTo(1);
+    }
+
+    @Test
     void emptyJournal_producesEmptyLivenessMap() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
@@ -68,6 +77,19 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void retractOnLaterPage_countedInTotalOfRetractPage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);        // page "0": [insert(1)]
+        storage.retract(1L);
+        storage.safepoint(1);        // page "1": [retract(1)]
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness.get("1")[1]).isEqualTo(1L); // totalCount — retract occupies space
+    }
+
+    @Test
     void retractOnLaterPage_decrementsLiveCountOnInsertPage() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
@@ -78,6 +100,34 @@ class CompactionCoordinatorTest {
         Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
 
         assertThat(liveness.get("0")[0]).isEqualTo(0L); // insert is no longer live
+    }
+
+    @Test
+    void modifyRecord_countsInTotalOnly() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.modify(1L, "Rule_MyRule_modify_0", new byte[0]);
+        storage.safepoint(0);
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        long[] counts = liveness.get("0");
+        assertThat(counts[0]).isEqualTo(1L); // liveCount — modify does not contribute
+        assertThat(counts[1]).isEqualTo(2L); // totalCount — modify is counted
+    }
+
+    @Test
+    void ruleMatchRecord_countsInTotalOnly() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.ruleMatch(1L, "myRule", 1L);
+        storage.safepoint(0);
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        long[] counts = liveness.get("0");
+        assertThat(counts[0]).isEqualTo(1L); // liveCount — ruleMatch does not contribute
+        assertThat(counts[1]).isEqualTo(2L); // totalCount — ruleMatch is counted
     }
 
     @Test

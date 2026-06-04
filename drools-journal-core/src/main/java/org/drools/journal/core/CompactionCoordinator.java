@@ -17,9 +17,11 @@ package org.drools.journal.core;
 
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
+import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RetractRecord;
+import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
 
 import java.util.ArrayList;
@@ -45,6 +47,8 @@ class CompactionCoordinator {
                             liveness.get(pageId)[0]++;
                             liveness.get(pageId)[1]++;
                             factToPage.put(insert.factHandleId(), pageId);
+                        } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
+                            liveness.get(pageId)[1]++;
                         } else if (r instanceof RetractRecord retract) {
                             liveness.get(pageId)[1]++;
                             String origin = factToPage.remove(retract.factHandleId());

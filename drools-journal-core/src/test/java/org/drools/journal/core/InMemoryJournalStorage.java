@@ -32,32 +32,51 @@ import org.drools.journal.api.SafepointRecord;
 /**
  * Non-durable, in-process {@link JournalStorage} for use in tests. Thread-safe.
  *
- * <p>Records are stored in a plain list; positions are zero-based list indices.
- * No files are written and no external dependencies are required.
+ * <p>Records are organised into pages. Each page accumulates records until a
+ * {@link SafepointRecord} closes it, at which point a new page opens.
+ * Positions are global zero-based indices across all pages.
  */
 public class InMemoryJournalStorage implements JournalStorage {
 
-    private final List<JournalRecord> records = new ArrayList<>();
+    private static class Page {
+        final List<JournalRecord> records = new ArrayList<>();
+    }
+
+    private final List<Page> pages = new ArrayList<>();
+    private Page currentPage = new Page();
     private boolean closed = false;
     private long safepointSequenceNo = 0L;
+
+    public InMemoryJournalStorage() {
+        pages.add(currentPage);
+    }
 
     @Override
     public synchronized long append(final JournalRecord record) {
         checkOpen();
-        records.add(record);
-        return records.size() - 1;
+        currentPage.records.add(record);
+        long position = globalSize() - 1;
+        if (record instanceof SafepointRecord) {
+            currentPage = new Page();
+            pages.add(currentPage);
+        }
+        return position;
     }
 
     @Override
     public synchronized JournalScanner scan(final long fromPosition) {
         checkOpen();
-        return new InMemoryJournalScanner(List.copyOf(records), fromPosition);
+        List<JournalRecord> flat = new ArrayList<>();
+        for (Page page : pages) {
+            flat.addAll(page.records);
+        }
+        return new InMemoryJournalScanner(List.copyOf(flat), fromPosition);
     }
 
     @Override
     public synchronized long latestPosition() {
         checkOpen();
-        return records.isEmpty() ? -1 : records.size() - 1;
+        return globalSize() - 1;
     }
 
     @Override
@@ -65,9 +84,14 @@ public class InMemoryJournalStorage implements JournalStorage {
         closed = true;
     }
 
-    /** Returns the total number of records appended so far. */
+    /** Returns the index of the current open page (0-based). */
+    synchronized int currentPageNumber() {
+        return pages.size() - 1;
+    }
+
+    /** Returns the total number of records across all pages. */
     synchronized int size() {
-        return records.size();
+        return globalSize();
     }
 
     @Override
@@ -116,5 +140,13 @@ public class InMemoryJournalStorage implements JournalStorage {
         if (closed) {
             throw new IllegalStateException("InMemoryJournalStorage has been closed");
         }
+    }
+
+    private int globalSize() {
+        int total = 0;
+        for (Page page : pages) {
+            total += page.records.size();
+        }
+        return total;
     }
 }
