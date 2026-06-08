@@ -16,3 +16,4 @@
 | [2026-05-26-PaoloB02-from-restore-to-compact.md](2026-05-26-PaoloB02-from-restore-to-compact.md) | 2026-05-26 | From Restore to Compact |
 | [2026-05-27-PaoloB01-phase-zero-gets-design.md](2026-05-27-PaoloB01-phase-zero-gets-design.md) | 2026-05-27 | Issue B: test helpers, crash-after-commit protocol fix, Phase 0 implementation |
 | [2026-06-03-PaoloB01-liveness-scan-finds-its-model.md](2026-06-03-PaoloB01-liveness-scan-finds-its-model.md) | 2026-06-03 | Issue C liveness scan: TDD reveals buffer-then-flush page model, isSparse |
+| [2026-06-08-PaoloB01-scan-is-not-the-index.md](2026-06-08-PaoloB01-scan-is-not-the-index.md) | 2026-06-08 | Page index moves to RestoreEngine; scan() stays raw; compact() Phases 1 and 2 |

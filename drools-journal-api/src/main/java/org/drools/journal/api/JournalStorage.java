@@ -15,6 +15,7 @@
  */
 package org.drools.journal.api;
 
+import java.util.List;
 
 /**
  * SPI for append-only journal storage.
@@ -62,6 +63,16 @@ public interface JournalStorage extends AutoCloseable {
      * if the journal is empty.
      */
     long latestPosition();
+
+    /**
+     * Writes a merged page produced by compaction. The page is stored in the
+     * journal but is not part of the live page sequence until the caller appends
+     * a {@link CompactionCommitRecord} followed by a safepoint.
+     *
+     * @param pageId  the unique identifier for the merged page
+     * @param records the live records to include in the merged page
+     */
+    void writeMergedPage(String pageId, List<JournalRecord> records);
 
     /**
      * Releases all resources held by this storage instance.

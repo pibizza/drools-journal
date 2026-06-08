@@ -16,7 +16,9 @@
 package org.drools.journal.core;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
@@ -32,44 +34,62 @@ import org.drools.journal.api.SafepointRecord;
 /**
  * Non-durable, in-process {@link JournalStorage} for use in tests. Thread-safe.
  *
- * <p>Records are organised into pages. Each page accumulates records until a
- * {@link SafepointRecord} closes it, at which point a new page opens.
- * Positions are global zero-based indices across all pages.
+ * <p>Maintains a raw append-only sequential journal. {@link #scan} returns records
+ * in creation order. The canonical live-page ordering for restore is the
+ * responsibility of {@link RestoreEngine}, not this class.
  */
 public class InMemoryJournalStorage implements JournalStorage {
 
-    private static class Page {
+    static final class Page {
+        String id;
         final List<JournalRecord> records = new ArrayList<>();
     }
 
-    private final List<Page> pages = new ArrayList<>();
+    /** All pages ever created, in creation order. Primary sequential structure. */
+    private final List<Page> journal = new ArrayList<>();
+
+    /** Lookup helper — not the primary structure. */
+    private final Map<String, Page> pageById = new HashMap<>();
+
+    /** Currently open page — accumulates records until the next safepoint. */
     private Page currentPage = new Page();
+
     private boolean closed = false;
     private long safepointSequenceNo = 0L;
-
-    public InMemoryJournalStorage() {
-        pages.add(currentPage);
-    }
 
     @Override
     public synchronized long append(final JournalRecord record) {
         checkOpen();
         currentPage.records.add(record);
-        long position = globalSize() - 1;
-        if (record instanceof SafepointRecord) {
+
+        if (record instanceof SafepointRecord sp) {
+            currentPage.id = String.valueOf(sp.sequenceNo());
+            journal.add(currentPage);
+            pageById.put(currentPage.id, currentPage);
             currentPage = new Page();
-            pages.add(currentPage);
         }
-        return position;
+
+        return globalSize() - 1;
+    }
+
+    @Override
+    public synchronized void writeMergedPage(final String pageId, final List<JournalRecord> records) {
+        checkOpen();
+        final Page page = new Page();
+        page.id = pageId;
+        page.records.addAll(records);
+        journal.add(page);
+        pageById.put(pageId, page);
     }
 
     @Override
     public synchronized JournalScanner scan(final long fromPosition) {
         checkOpen();
-        List<JournalRecord> flat = new ArrayList<>();
-        for (Page page : pages) {
+        final List<JournalRecord> flat = new ArrayList<>();
+        for (final Page page : journal) {
             flat.addAll(page.records);
         }
+        flat.addAll(currentPage.records);
         return new InMemoryJournalScanner(List.copyOf(flat), fromPosition);
     }
 
@@ -84,19 +104,23 @@ public class InMemoryJournalStorage implements JournalStorage {
         closed = true;
     }
 
-    /** Returns the index of the current open page (0-based). */
-    synchronized int currentPageNumber() {
-        return pages.size() - 1;
-    }
-
-    /** Returns the total number of records across all pages. */
-    synchronized int size() {
-        return globalSize();
-    }
-
     @Override
     public synchronized void safepoint() {
         append(new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis()));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test helpers
+    // -------------------------------------------------------------------------
+
+    /** Number of closed pages in the journal (session pages + merged pages). */
+    synchronized int currentPageNumber() {
+        return journal.size();
+    }
+
+    /** Total number of records in the raw journal plus the open page. */
+    synchronized int size() {
+        return globalSize();
     }
 
     void insert(final long factHandleId, final Object fact) {
@@ -136,17 +160,21 @@ public class InMemoryJournalStorage implements JournalStorage {
         return JournalPrinter.print(this);
     }
 
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private int globalSize() {
+        int total = currentPage.records.size();
+        for (final Page page : journal) {
+            total += page.records.size();
+        }
+        return total;
+    }
+
     private void checkOpen() {
         if (closed) {
             throw new IllegalStateException("InMemoryJournalStorage has been closed");
         }
-    }
-
-    private int globalSize() {
-        int total = 0;
-        for (Page page : pages) {
-            total += page.records.size();
-        }
-        return total;
     }
 }

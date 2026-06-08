@@ -29,6 +29,7 @@ import org.drools.journal.api.SafepointRecord;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,63 +53,74 @@ class RestoreEngine {
     }
 
     ScanResult scan() {
-        // Phase 0: a page is retired only when its compaction commit is sealed by a safepoint.
-        // An unsealed commit (crash between COMMIT and the next safepoint) leaves the original pages canonical.
-        Set<String> retiredPageIds = new HashSet<>();
-        Set<String> sealedMergeIds = new HashSet<>();
-        Map<String, String[]> unsealedCommits = new HashMap<>();
+        // Phase 0: build the live page index from the raw stream.
+        // A commit is sealed — and its source pages retired — only when a
+        // SafepointRecord follows the CompactionCommitRecord.
+        final List<String> pageIndex = new ArrayList<>();
+        final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
 
         try (JournalScanner phase0 = journal.scan(0)) {
             while (phase0.hasNext()) {
-                JournalRecord record = phase0.next();
+                final JournalRecord record = phase0.next();
                 if (record instanceof CompactionCommitRecord commit) {
-                    unsealedCommits.put(commit.mergedPageId(), commit.replacedPageIds());
-                } else if (record instanceof SafepointRecord) {
-                    unsealedCommits.forEach((mergedId, replacedIds) -> {
-                        sealedMergeIds.add(mergedId);
-                        for (String replacedId : replacedIds) {
-                            retiredPageIds.add(replacedId);
-                        }
-                    });
-                    unsealedCommits.clear();
+                    pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
+                } else if (record instanceof SafepointRecord sp) {
+                    for (Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
+                        spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
+                    }
+                    pendingCommits.clear();
+                    pageIndex.add(String.valueOf(sp.sequenceNo()));
                 }
             }
         }
+        // Unsealed commits (no following safepoint) leave original pages canonical.
 
-        // Phase 1: replay in order, skipping retired pages.
-        // Entering the content of a sealed merge resets the retired flag so merged records are applied.
-        Map<Long, Object> survivingFacts = new HashMap<>();
-        List<RuleMatchRecord> firedMatches = new ArrayList<>();
-        List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
-        Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
-        List<JournalRecord> pending = new ArrayList<>();
+        final Set<String> livePageIds = new HashSet<>(pageIndex);
 
-        boolean inRetiredPage = false;
+        // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
+        final Map<Long, Object> survivingFacts = new HashMap<>();
+        final List<RuleMatchRecord> firedMatches = new ArrayList<>();
+        final List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
+        final Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
+        final List<JournalRecord> pending = new ArrayList<>();
 
         try (JournalScanner scanner = journal.scan(0)) {
             while (scanner.hasNext()) {
-                JournalRecord record = scanner.next();
+                final JournalRecord record = scanner.next();
 
                 if (record instanceof SafepointRecord sp) {
-                    inRetiredPage = retiredPageIds.contains(String.valueOf(sp.sequenceNo()));
-                    if (!inRetiredPage) {
+                    if (livePageIds.contains(String.valueOf(sp.sequenceNo()))) {
                         flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
                     }
                     pending.clear();
-                } else if (record instanceof CompactionPrepareRecord prepare) {
-                    if (sealedMergeIds.contains(prepare.preparingPageId())) {
-                        inRetiredPage = false;
-                    }
-                } else if (record instanceof CompactionCommitRecord) {
-                    // marker only
-                } else if (!inRetiredPage) {
+                } else if (record instanceof CompactionPrepareRecord
+                        || record instanceof CompactionCommitRecord) {
+                    // compaction markers — no action
+                } else {
                     pending.add(record);
                 }
             }
         }
-        // Trailing pending records after the last safepoint are silently discarded
+        // Trailing records after the last safepoint are silently discarded.
 
         return new ScanResult(survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
+    }
+
+    private static void spliceIntoIndex(final List<String> pageIndex,
+                                        final String mergedId,
+                                        final String[] replacedIds) {
+        final Set<String> retired = Set.of(replacedIds);
+        int insertPos = -1;
+        for (int i = 0; i < pageIndex.size(); i++) {
+            if (retired.contains(pageIndex.get(i))) {
+                insertPos = i;
+                break;
+            }
+        }
+        pageIndex.removeIf(retired::contains);
+        if (insertPos >= 0) {
+            pageIndex.add(insertPos, mergedId);
+        }
     }
 
     private void flush(final List<JournalRecord> pending,

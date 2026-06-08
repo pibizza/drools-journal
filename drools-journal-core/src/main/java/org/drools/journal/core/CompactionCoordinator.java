@@ -15,6 +15,7 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
@@ -26,8 +27,12 @@ import org.drools.journal.api.SafepointRecord;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 class CompactionCoordinator {
 
@@ -69,5 +74,45 @@ class CompactionCoordinator {
 
     static boolean isSparse(final long[] counts) {
         return (double) counts[0] / counts[1] < 0.30;
+    }
+
+    static void compact(final JournalStorage storage, final Set<String> pageIds) {
+        if (pageIds.isEmpty()) {
+            return;
+        }
+        final String mergedPageId = "m-" + UUID.randomUUID();
+        final String[] replacedPageIds = pageIds.toArray(new String[0]);
+
+        // Phase 1 — PREPARE
+        storage.append(new CompactionPrepareRecord(mergedPageId, replacedPageIds));
+
+        // Phase 2 — WRITE: collect live InsertRecords from source pages.
+        // A fact is live if it was inserted in a source page and never retracted.
+        final Set<Long> retractedIds = new HashSet<>();
+        final Map<Long, InsertRecord> liveInserts = new LinkedHashMap<>();
+
+        try (JournalScanner scanner = storage.scan(0)) {
+            final List<InsertRecord> pageBuffer = new ArrayList<>();
+            while (scanner.hasNext()) {
+                final JournalRecord record = scanner.next();
+                if (record instanceof SafepointRecord sp) {
+                    // The safepoint closes the page — now we know the page ID.
+                    if (pageIds.contains(String.valueOf(sp.sequenceNo()))) {
+                        for (final InsertRecord insert : pageBuffer) {
+                            liveInserts.put(insert.factHandleId(), insert);
+                        }
+                    }
+                    pageBuffer.clear();
+                } else if (record instanceof InsertRecord insert) {
+                    pageBuffer.add(insert);
+                } else if (record instanceof RetractRecord retract) {
+                    retractedIds.add(retract.factHandleId());
+                }
+            }
+            // Trailing buffer (open page, merged pages) contains no source-page inserts — discard.
+        }
+        liveInserts.keySet().removeAll(retractedIds);
+
+        storage.writeMergedPage(mergedPageId, new ArrayList<>(liveInserts.values()));
     }
 }

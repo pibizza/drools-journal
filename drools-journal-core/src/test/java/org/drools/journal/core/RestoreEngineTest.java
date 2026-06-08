@@ -15,7 +15,10 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.InsertRecord;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -82,6 +85,8 @@ class RestoreEngineTest {
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", "0");
+        storage.writeMergedPage("m-1", List.of(embed(1L, "fact")));
+        // no COMMIT → pendingCommits never sealed → pageIndex stays [P0]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -89,14 +94,14 @@ class RestoreEngineTest {
     }
 
     @Test
-    void prepareInsertAndCommit_factSurvives() {
+    void prepareCommitAndSafepoint_mergedPageReplacesSources() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", "0");
-        storage.insert(1L, "fact");
+        storage.writeMergedPage("m-1", List.of(embed(1L, "fact")));
         storage.compactionCommit("m-1", "0");
-        storage.safepoint(1L);
+        storage.safepoint(1L);   // seals commit → pageIndex = [Pm, P1]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -104,12 +109,13 @@ class RestoreEngineTest {
     }
 
     @Test
-    void prepareWithInsertButNoCommit_originalPageRemainsCanonical() {
+    void prepareAndWriteButNoCommit_originalPageRemainsCanonical() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", "0");
-        storage.insert(1L, "fact");
+        storage.writeMergedPage("m-1", List.of(embed(1L, "merged")));
+        // no COMMIT → pageIndex stays [P0]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -122,12 +128,21 @@ class RestoreEngineTest {
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", "0");
-        storage.insert(1L, "fact");
+        storage.writeMergedPage("m-1", List.of(embed(1L, "merged")));
         storage.compactionCommit("m-1", "0");
+        // no sealing safepoint → pendingCommits not sealed → pageIndex stays [P0]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+    }
+
+    // -------------------------------------------------------------------------
+    // helpers
+    // -------------------------------------------------------------------------
+
+    private static InsertRecord embed(final long id, final Object value) {
+        return new InsertRecord(id, false, -1L, JournalPayloadBuilder.embed(value));
     }
 
     @Test
