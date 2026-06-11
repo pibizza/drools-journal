@@ -95,6 +95,66 @@ class CompactionCorrectnessTest {
     }
 
     @Test
+    void compact_afterSealingSafepoint_restoreShowsOnlyLiveFacts() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
+        storage.insert(1L, "live");
+        storage.insert(2L, "dead"); storage.insert(3L, "dead"); storage.insert(4L, "dead");
+        storage.safepoint(0);
+        // Page "1": retract those 3 → 0% live, sparse
+        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.safepoint(1);
+
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        storage.safepoint(2); // seals the COMMIT — simulates next fireAllRules()
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        assertThat(result.survivingFacts()).hasSize(1);
+        assertThat(result.survivingFacts()).containsKey(1L);
+    }
+
+    @Test
+    void crashAfterPrepare_restoreUsesOriginalPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
+        storage.insert(1L, "a");
+        storage.insert(2L, "b"); storage.insert(3L, "c"); storage.insert(4L, "d");
+        storage.safepoint(0);
+        // Page "1": retract those 3 → 0% live, sparse
+        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.safepoint(1);
+        // Simulate crash after PREPARE — no COMMIT written
+        storage.compactionPrepare("m-crash", "0", "1");
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        // Original pages are canonical — fact 1 survives
+        assertThat(result.survivingFacts()).hasSize(1);
+        assertThat(result.survivingFacts()).containsKey(1L);
+    }
+
+    @Test
+    void crashAfterCommit_beforeSafepoint_restoreUsesOriginalPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
+        storage.insert(1L, "a");
+        storage.insert(2L, "b"); storage.insert(3L, "c"); storage.insert(4L, "d");
+        storage.safepoint(0);
+        // Page "1": retract those 3 → 0% live, sparse
+        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.safepoint(1);
+        // compact() runs but crashes before the sealing safepoint
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        // No safepoint — COMMIT is unsealed, original pages remain canonical
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        // COMMIT not sealed → original pages still canonical — fact 1 survives
+        assertThat(result.survivingFacts()).hasSize(1);
+        assertThat(result.survivingFacts()).containsKey(1L);
+    }
+
+    @Test
     void compact_writesPrepareThenCommit() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
@@ -109,6 +169,35 @@ class CompactionCorrectnessTest {
         long commitCount = records.stream().filter(r -> r instanceof CompactionCommitRecord).count();
         assertThat(prepareCount).isEqualTo(1);
         assertThat(commitCount).isEqualTo(1);
+    }
+
+    @Test
+    void twoSequentialCompactions_eachSealedCorrectly() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        // Round 1: fact 1 survives, facts 2-4 die
+        storage.insert(1L, "keep");
+        storage.insert(2L, "drop"); storage.insert(3L, "drop"); storage.insert(4L, "drop");
+        storage.safepoint(0);
+        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.safepoint(1);
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        storage.safepoint(2); // seals round 1
+
+        // Round 2: fact 5 survives, facts 6-8 die
+        storage.insert(5L, "keep");
+        storage.insert(6L, "drop"); storage.insert(7L, "drop"); storage.insert(8L, "drop");
+        storage.safepoint(3);
+        storage.retract(6L); storage.retract(7L); storage.retract(8L);
+        storage.safepoint(4);
+        CompactionCoordinator.compact(storage, Set.of("3", "4"));
+        storage.safepoint(5); // seals round 2
+
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+
+        assertThat(result.survivingFacts()).hasSize(2);
+        assertThat(result.survivingFacts()).containsKey(1L);
+        assertThat(result.survivingFacts()).containsKey(5L);
     }
 
     // -------------------------------------------------------------------------
