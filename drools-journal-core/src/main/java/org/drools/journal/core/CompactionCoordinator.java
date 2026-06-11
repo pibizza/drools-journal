@@ -15,6 +15,7 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
@@ -114,5 +115,8 @@ class CompactionCoordinator {
         liveInserts.keySet().removeAll(retractedIds);
 
         storage.writeMergedPage(mergedPageId, new ArrayList<>(liveInserts.values()));
+
+        // Phase 3 — COMMIT
+        storage.append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
     }
 }
