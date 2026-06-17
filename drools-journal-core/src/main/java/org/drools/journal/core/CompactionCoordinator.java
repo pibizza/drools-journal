@@ -26,6 +26,7 @@ import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,8 +35,63 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 class CompactionCoordinator {
+
+    static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(60);
+
+    private final JournalStorage storage;
+    private final Duration interval;
+    private ScheduledExecutorService scheduler;
+
+    CompactionCoordinator(final JournalStorage storage, final Duration interval) {
+        this.storage = storage;
+        this.interval = interval;
+    }
+
+    void start() {
+        if (Duration.ZERO.equals(interval)) {
+            return;
+        }
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "drools-journal-compactor");
+            t.setDaemon(true);
+            return t;
+        });
+        long millis = interval.toMillis();
+        scheduler.scheduleWithFixedDelay(this::runCycle, millis, millis, TimeUnit.MILLISECONDS);
+    }
+
+    void stop() {
+        if (scheduler == null) {
+            return;
+        }
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void runCycle() {
+        Map<String, long[]> liveness = scanLiveness(storage);
+        Set<String> candidates = new HashSet<>();
+        liveness.forEach((id, counts) -> {
+            if (isSparse(counts)) {
+                candidates.add(id);
+            }
+        });
+        if (!candidates.isEmpty()) {
+            compact(storage, candidates);
+        }
+    }
 
     static Map<String, long[]> scanLiveness(final JournalStorage storage) {
         Map<String, long[]> liveness = new HashMap<>();

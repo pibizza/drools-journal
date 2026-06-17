@@ -23,6 +23,8 @@ import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.rule.FactHandle;
 import org.kie.internal.utils.KieHelper;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JournalledKieSessionTest {
@@ -113,6 +115,20 @@ class JournalledKieSessionTest {
                 MATCH  id=2  pkg=org.drools.journal.test  rule=ProcessFact  facts=[2]
                 SAFEPOINT  seq=0
                 """);
+    }
+
+    @Test
+    void open_withDurationZero_disposeCompletesCleanly() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        JournalledKieSession session = JournalledSessionFactory.open(
+                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage,
+                Duration.ZERO);
+        session.dispose();
+
+        boolean compactorThreadAlive = Thread.getAllStackTraces().keySet().stream()
+                .anyMatch(t -> "drools-journal-compactor".equals(t.getName()));
+        assertThat(compactorThreadAlive).isFalse();
     }
 
     @Test

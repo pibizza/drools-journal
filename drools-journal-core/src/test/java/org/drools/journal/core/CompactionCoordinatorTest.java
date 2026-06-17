@@ -17,6 +17,7 @@ package org.drools.journal.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,5 +156,25 @@ class CompactionCoordinatorTest {
         long[] counts = liveness.get("0");
         assertThat(counts[0]).isEqualTo(1L); // liveCount
         assertThat(counts[1]).isEqualTo(1L); // totalCount
+    }
+
+    @Test
+    void durationZero_start_doesNotCreateCompactorThread() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
+
+        coordinator.start();
+
+        boolean compactorThreadAlive = Thread.getAllStackTraces().keySet().stream()
+                .anyMatch(t -> "drools-journal-compactor".equals(t.getName()));
+        assertThat(compactorThreadAlive).isFalse();
+    }
+
+    @Test
+    void stop_whenNeverStarted_isNoOp() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
+
+        coordinator.stop(); // must not throw
     }
 }

@@ -28,6 +28,7 @@ import org.kie.api.runtime.Environment;
 import org.kie.api.runtime.rule.FactHandle;
 import org.kie.api.runtime.rule.Match;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +43,12 @@ public final class JournalledSessionFactory {
     private JournalledSessionFactory() {}
 
     public static JournalledKieSession open(final KieBase kbase, final JournalStorage storage) {
+        return open(kbase, storage, CompactionCoordinator.DEFAULT_INTERVAL);
+    }
+
+    public static JournalledKieSession open(final KieBase kbase,
+                                            final JournalStorage storage,
+                                            final Duration compactionInterval) {
         Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
         JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
@@ -49,6 +56,9 @@ public final class JournalledSessionFactory {
             restore(session, storage);
         }
         session.addEventListener(new JournallingRuntimeEventListener(storage, (fact, handle) -> StorageDecision.EMBED));
+        CompactionCoordinator coordinator = new CompactionCoordinator(storage, compactionInterval);
+        coordinator.start();
+        session.setCompactionCoordinator(coordinator);
         return session;
     }
 

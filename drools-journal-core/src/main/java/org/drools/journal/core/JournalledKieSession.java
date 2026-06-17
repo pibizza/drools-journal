@@ -26,6 +26,7 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     private final JournalStorage journal;
     private ReplayFilter replayFilter;
+    private CompactionCoordinator compactionCoordinator;
 
     public JournalledKieSession(final long id,
                                 final InternalKnowledgeBase kBase,
@@ -44,6 +45,10 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
         this.replayFilter = filter;
     }
 
+    void setCompactionCoordinator(final CompactionCoordinator coordinator) {
+        this.compactionCoordinator = coordinator;
+    }
+
     @Override
     public int fireAllRules() {
         int fired = (replayFilter != null)
@@ -55,6 +60,9 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     @Override
     public void dispose() {
+        if (compactionCoordinator != null) {
+            compactionCoordinator.stop();
+        }
         // JournalStorage is owned by the caller — closing it is their responsibility.
         super.dispose();
     }
