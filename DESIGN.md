@@ -99,6 +99,7 @@ avoiding KieSessionConfiguration changes that would create a wrong-direction dep
 
 Public entry point: `JournalledSessionFactory.open(kbase, storage)` — the same call
 works whether the journal is empty (fresh session) or contains prior state (restore).
+A `Duration` overload controls the compaction interval (`Duration.ZERO` disables it).
 `JournalStorage` lifecycle is owned by the caller; `dispose()` does not close it.
 
 ### JournalledNamedEntryPoint
@@ -230,15 +231,35 @@ loss is one page since the last safepoint.
 
 ## Compaction Protocol (CompactionCoordinator)
 
-Tracks `pageId → (liveCount, totalCount)` in-memory (rebuilt by sequential scan on
-startup, updated incrementally as records are written). When
-`liveCount / totalCount < 0.30`, the page becomes a compaction candidate.
+**Safepoint trigger:** `JournalledKieSession.fireAllRules()` appends
+`SafepointRecord(sequenceNo++, currentTimeMillis())` after firing completes —
+working memory is fully consistent at that point. This is the sole safepoint
+write point.
+
+**Page definition:** the sequence of records between two consecutive
+`SafepointRecord`s. Page ID = `String.valueOf(SafepointRecord.sequenceNo)`.
+Page boundaries fall out of the safepoint mechanism — no `JournalStorage` SPI
+changes required.
+
+**Liveness tracking:** `CompactionCoordinator` performs a periodic full journal
+rescan (not write-path interception) on a daemon background thread
+(`drools-journal-compactor`) at a configurable interval (default 60 s).
+The coordinator is stateless between polls. Tracks `pageId → (liveCount,
+totalCount)`. When `liveCount / totalCount < 0.30`, the page becomes a
+compaction candidate.
+
+**Session lifecycle:** `JournalledSessionFactory.open(kbase, storage, Duration)`
+creates and starts the coordinator; the one-arg overload delegates with
+`DEFAULT_INTERVAL = 60s`. `Duration.ZERO` disables the background thread — the
+safe state for tests that drive `compact()` directly. `JournalledKieSession
+.dispose()` stops the coordinator (5-second grace period, then forced shutdown).
+`JournalStorage` lifecycle remains the caller's responsibility.
 
 Four-step atomic protocol — writer never pauses:
 
 ```
 Step 1 — PREPARE:  append CompactionPrepareRecord { Pm_id, replacedPageIds: [P1, P2] }
-Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live entries only)
+Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live InsertRecords only)
 Step 3 — COMMIT:   append CompactionCommitRecord { Pm_id, replacedPageIds: [P1, P2] }
 Step 4 — RETIRE:   lazily delete P1, P2 (correctness does not depend on this completing)
 ```
@@ -275,7 +296,7 @@ Concurrent compactions on distinct page pairs are supported.
 | 3 — Test infra | InMemoryJournalStorage/Scanner, SPI contract tests | ✅ Complete |
 | 4a — Core (runtime hooks) | JournalledNamedEntryPoint, JournalledAgenda, JournallingRuntimeEventListener, JournalledSessionFactory | ✅ Complete |
 | 4b — Core (restore) | RestoreEngine, ReplayFilter, TMS wiring | ✅ Complete |
-| 4c — Core (compaction) | CompactionCoordinator | ⬜ Separate epic |
+| 4c — Core (compaction) | CompactionCoordinator | ✅ Complete |
 | 5 — Compiler rewrite | DRL `modify` → `ModifyRecord` (upstream `drools-model-codegen` patch) | 🔁 Deferred |
 | 6 — Chronicle backend | ChronicleJournalStorage/Scanner | ⬜ Pending |
 | 7 — Aeron backend | SBE schema + AeronJournalStorage/Scanner | ⬜ Pending |
