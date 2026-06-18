@@ -49,7 +49,7 @@ class JournalledKieSessionTest {
             """;
 
     @Test
-    void insert_and_fire_produce_journal_records() {
+    void insertAndFire_singleFact_producesInsertMatchAndSafepoint() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -66,7 +66,7 @@ class JournalledKieSessionTest {
     }
 
     @Test
-    void retract_produces_retract_record() {
+    void retract_insertedFact_producesRetractRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -82,7 +82,7 @@ class JournalledKieSessionTest {
     }
 
     @Test
-    void update_produces_insert_snapshot_with_same_handle_id() {
+    void update_insertedFact_producesInsertSnapshotWithSameHandleId() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -98,7 +98,7 @@ class JournalledKieSessionTest {
     }
 
     @Test
-    void multiple_activations_get_monotonically_increasing_match_ids() {
+    void fireAllRules_multipleMatches_matchIdsAreMonotonicallyIncreasing() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -132,7 +132,7 @@ class JournalledKieSessionTest {
     }
 
     @Test
-    void insertLogical_records_logical_flag_and_justifying_match_id() {
+    void insertLogical_duringRuleFiring_recordsLogicalFlagAndJustifyingMatchId() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
