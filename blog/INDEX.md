@@ -18,3 +18,4 @@
 | [2026-06-03-PaoloB01-liveness-scan-finds-its-model.md](2026-06-03-PaoloB01-liveness-scan-finds-its-model.md) | 2026-06-03 | Issue C liveness scan: TDD reveals buffer-then-flush page model, isSparse |
 | [2026-06-08-PaoloB01-scan-is-not-the-index.md](2026-06-08-PaoloB01-scan-is-not-the-index.md) | 2026-06-08 | Page index moves to RestoreEngine; scan() stays raw; compact() Phases 1 and 2 |
 | [2026-06-11-PaoloB01-tests-that-couldnt-happen.md](2026-06-11-PaoloB01-tests-that-couldnt-happen.md) | 2026-06-11 | Tests reworked to use sparse pages; Phase 3 (COMMIT) added; crash scenarios |
+| [2026-06-18-PaoloB01-five-classes-one-listener.md](2026-06-18-PaoloB01-five-classes-one-listener.md) | 2026-06-18 | Three PRs, five issues closed: ObjectStorageStrategy symmetric, five infra classes deleted |
