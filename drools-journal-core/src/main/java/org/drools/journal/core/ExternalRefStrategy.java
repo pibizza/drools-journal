@@ -13,10 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.api;
+package org.drools.journal.core;
 
 import java.util.function.Function;
 
+import org.drools.journal.api.ExternalRef;
+import org.drools.journal.api.ObjectStorageStrategy;
+import org.drools.journal.api.Payload;
 import org.kie.api.runtime.rule.FactHandle;
 
 /**

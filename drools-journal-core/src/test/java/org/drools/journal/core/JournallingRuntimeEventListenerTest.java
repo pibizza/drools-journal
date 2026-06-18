@@ -16,7 +16,6 @@
 package org.drools.journal.core;
 
 import org.drools.core.common.DefaultFactHandle;
-import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.RetractRecord;
 import org.junit.jupiter.api.Test;

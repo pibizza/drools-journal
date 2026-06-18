@@ -26,8 +26,4 @@ public enum ObjectStorageMode {
     /** Store only reference keys by default; facts live in an external store. */
     EXTERNAL_REF;
 
-    /** Returns the built-in {@link ObjectStorageStrategy} for this mode. */
-    public ObjectStorageStrategy toStrategy() {
-        return this == EMBED ? new EmbedStrategy() : new ExternalRefStrategy(fact -> fact.getClass().getName());
-    }
 }

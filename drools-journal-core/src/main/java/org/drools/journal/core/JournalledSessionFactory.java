@@ -19,7 +19,6 @@ import org.drools.core.common.InternalWorkingMemoryEntryPoint;
 import org.drools.core.common.TruthMaintenanceSystem;
 import org.drools.core.common.TruthMaintenanceSystemFactory;
 import org.drools.core.rule.consequence.InternalMatch;
-import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RuleMatchRecord;
 import org.kie.api.KieBase;

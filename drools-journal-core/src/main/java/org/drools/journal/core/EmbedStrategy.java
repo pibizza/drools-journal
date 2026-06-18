@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.api;
+package org.drools.journal.core;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -21,6 +21,9 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
+import org.drools.journal.api.EmbeddedPayload;
+import org.drools.journal.api.ObjectStorageStrategy;
+import org.drools.journal.api.Payload;
 import org.kie.api.runtime.rule.FactHandle;
 
 /**

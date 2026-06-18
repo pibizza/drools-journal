@@ -17,7 +17,6 @@ package org.drools.journal.core;
 
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
-import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;

@@ -22,8 +22,7 @@ import org.kie.api.runtime.rule.FactHandle;
  *
  * <p>Implementations own both directions: {@link #store} serialises a fact into
  * a {@link Payload} on the write path; {@link #load} reconstructs the fact from
- * that payload on the restore path. Built-in implementations: {@link EmbedStrategy}
- * (Java serialisation inline) and {@link ExternalRefStrategy} (external store reference).
+ * that payload on the restore path.
  */
 public interface ObjectStorageStrategy {
 

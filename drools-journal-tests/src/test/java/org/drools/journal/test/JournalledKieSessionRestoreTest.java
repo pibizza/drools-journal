@@ -22,7 +22,7 @@ import org.drools.journal.api.SafepointRecord;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.api.EmbedStrategy;
+import org.drools.journal.core.EmbedStrategy;
 import org.junit.jupiter.api.Test;
 import org.kie.api.KieBase;
 import org.kie.api.io.ResourceType;

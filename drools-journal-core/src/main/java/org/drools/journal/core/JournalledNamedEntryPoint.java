@@ -26,7 +26,6 @@ import org.drools.core.impl.InternalRuleBase;
 import org.drools.core.reteoo.EntryPointNode;
 import org.drools.core.rule.accessor.FactHandleFactory;
 import org.drools.core.rule.consequence.InternalMatch;
-import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ObjectStorageStrategy;

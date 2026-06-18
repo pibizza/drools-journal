@@ -15,7 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.junit.jupiter.api.Test;
 

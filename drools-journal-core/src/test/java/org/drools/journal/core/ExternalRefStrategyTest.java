@@ -13,44 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.api;
+package org.drools.journal.core;
 
+import org.drools.journal.api.ExternalRef;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class EmbedStrategyTest {
+class ExternalRefStrategyTest {
 
-    private final EmbedStrategy strategy = new EmbedStrategy();
+    private final ExternalRefStrategy strategy = new ExternalRefStrategy(fact -> "key-" + fact);
 
     @Test
-    void store_serializesFactToEmbeddedPayload() {
-        EmbeddedPayload payload = (EmbeddedPayload) strategy.store(42, null);
+    void store_producesExternalRefWithCorrectTypeNameAndKey() {
+        ExternalRef ref = (ExternalRef) strategy.store(42, null);
 
-        assertThat(payload.bytes()).isNotEmpty();
+        assertThat(ref.typeName()).isEqualTo(Integer.class.getName());
+        assertThat(ref.dbKey()).isEqualTo("key-42");
     }
 
     @Test
-    void load_deserializesEmbeddedPayloadToOriginalFact() {
-        EmbeddedPayload payload = (EmbeddedPayload) strategy.store(42, null);
-
-        Object result = strategy.load(payload);
-
-        assertThat(result).isEqualTo(42);
-    }
-
-    @Test
-    void roundTrip_stringFact() {
-        String original = "hello journal";
-
-        Object result = strategy.load((EmbeddedPayload) strategy.store(original, null));
-
-        assertThat(result).isEqualTo(original);
-    }
-
-    @Test
-    void load_throwsForExternalRef() {
+    void load_throwsUnsupportedOperation() {
         ExternalRef ref = new ExternalRef("com.example.Fact", "key-123");
 
         assertThatThrownBy(() -> strategy.load(ref))
