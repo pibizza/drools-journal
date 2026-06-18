@@ -26,8 +26,4 @@ public enum ObjectStorageMode {
     /** Store only reference keys by default; facts live in an external store. */
     EXTERNAL_REF;
 
-    /** Converts this mode to the equivalent per-object {@link StorageDecision}. */
-    public StorageDecision toDecision() {
-        return this == EMBED ? StorageDecision.EMBED : StorageDecision.EXTERNAL_REF;
-    }
 }

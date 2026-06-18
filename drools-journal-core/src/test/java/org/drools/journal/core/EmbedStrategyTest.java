@@ -17,29 +17,45 @@ package org.drools.journal.core;
 
 import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.api.ExternalRef;
-
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class JournalPayloadBuilderTest {
+class EmbedStrategyTest {
+
+    private final EmbedStrategy strategy = new EmbedStrategy();
 
     @Test
-    void deserializeEmbeddedPayloadReturnsOriginalObject() {
-        String original = "hello journal";
-        EmbeddedPayload payload = JournalPayloadBuilder.embed(original);
+    void store_serializesFactToEmbeddedPayload() {
+        EmbeddedPayload payload = (EmbeddedPayload) strategy.store(42, null);
 
-        Object result = JournalPayloadBuilder.deserialize(payload);
+        assertThat(payload.bytes()).isNotEmpty();
+    }
+
+    @Test
+    void load_deserializesEmbeddedPayloadToOriginalFact() {
+        EmbeddedPayload payload = (EmbeddedPayload) strategy.store(42, null);
+
+        Object result = strategy.load(payload);
+
+        assertThat(result).isEqualTo(42);
+    }
+
+    @Test
+    void roundTrip_stringFact() {
+        String original = "hello journal";
+
+        Object result = strategy.load((EmbeddedPayload) strategy.store(original, null));
 
         assertThat(result).isEqualTo(original);
     }
 
     @Test
-    void deserializeExternalRefThrowsUnsupportedOperationException() {
-        ExternalRef ref = new ExternalRef("com.example.Fact", "42");
+    void load_throwsForExternalRef() {
+        ExternalRef ref = new ExternalRef("com.example.Fact", "key-123");
 
-        assertThatThrownBy(() -> JournalPayloadBuilder.deserialize(ref))
+        assertThatThrownBy(() -> strategy.load(ref))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 }

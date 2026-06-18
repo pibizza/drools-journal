@@ -22,6 +22,7 @@ import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ModifyRecord;
+import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
@@ -46,10 +47,17 @@ class RestoreEngine {
 
     private final JournalStorage journal;
     private final ModifyLambdaRegistry lambdaRegistry;
+    private final ObjectStorageStrategy strategy;
 
     RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
+        this(journal, lambdaRegistry, new EmbedStrategy());
+    }
+
+    RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry,
+                  final ObjectStorageStrategy strategy) {
         this.journal = journal;
         this.lambdaRegistry = lambdaRegistry;
+        this.strategy = strategy;
     }
 
     ScanResult scan() {
@@ -130,7 +138,7 @@ class RestoreEngine {
                        final Map<Long, RuleMatchRecord> firedMatchesById) {
         for (JournalRecord record : pending) {
             if (record instanceof InsertRecord insert) {
-                survivingFacts.put(insert.factHandleId(), JournalPayloadBuilder.deserialize(insert.payload()));
+                survivingFacts.put(insert.factHandleId(), strategy.load(insert.payload()));
                 if (insert.logical()) {
                     pendingTmsLinks.add(new PendingTmsLink(insert.factHandleId(), insert.justifyingRuleMatchId()));
                 }

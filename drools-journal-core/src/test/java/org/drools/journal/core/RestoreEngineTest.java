@@ -142,7 +142,7 @@ class RestoreEngineTest {
     // -------------------------------------------------------------------------
 
     private static InsertRecord embed(final long id, final Object value) {
-        return new InsertRecord(id, false, -1L, JournalPayloadBuilder.embed(value));
+        return new InsertRecord(id, false, -1L, new EmbedStrategy().store(value, null));
     }
 
     @Test

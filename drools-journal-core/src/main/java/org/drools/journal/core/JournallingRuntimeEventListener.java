@@ -49,14 +49,14 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
         boolean logical = currentActivationId >= 0;
         journal.append(new InsertRecord(handle.getId(), logical, currentActivationId,
-                JournalPayloadBuilder.build(event.getObject(), handle, strategy)));
+                strategy.store(event.getObject(), handle)));
     }
 
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
         journal.append(new InsertRecord(handle.getId(), false, -1L,
-                JournalPayloadBuilder.build(event.getObject(), handle, strategy)));
+                strategy.store(event.getObject(), handle)));
     }
 
     @Override
