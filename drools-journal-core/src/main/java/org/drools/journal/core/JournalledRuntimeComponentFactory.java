@@ -17,25 +17,13 @@ package org.drools.journal.core;
 
 import org.drools.base.RuleBase;
 import org.drools.core.SessionConfiguration;
-import org.drools.core.common.AgendaFactory;
-import org.drools.core.common.EntryPointFactory;
 import org.drools.core.common.InternalWorkingMemory;
 import org.drools.kiesession.factory.RuntimeComponentFactoryImpl;
 import org.drools.kiesession.rulebase.InternalKnowledgeBase;
 import org.kie.api.runtime.Environment;
 
-// Always active via SPI; each factory method checks the Environment before engaging journal behaviour.
+// Always active via SPI; journal listener wires in agenda and runtime event handling directly.
 public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryImpl {
-
-    @Override
-    public EntryPointFactory getEntryPointFactory() {
-        return new JournalledEntryPointFactory();
-    }
-
-    @Override
-    public AgendaFactory getAgendaFactory(final SessionConfiguration config) {
-        return new JournalledAgendaFactory();
-    }
 
     @Override
     public InternalWorkingMemory createStatefulSession(final RuleBase ruleBase,

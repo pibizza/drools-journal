@@ -54,7 +54,9 @@ public final class JournalledSessionFactory {
         if (storage.latestPosition() >= 0) {
             restore(session, storage);
         }
-        session.addEventListener(new JournallingRuntimeEventListener(storage, new EmbedStrategy()));
+        JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(storage, new EmbedStrategy());
+        session.addEventListener((org.kie.api.event.rule.RuleRuntimeEventListener) listener);
+        session.addEventListener((org.kie.api.event.rule.AgendaEventListener) listener);
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, compactionInterval);
         coordinator.start();
         session.setCompactionCoordinator(coordinator);
