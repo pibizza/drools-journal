@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CompactionCoordinatorTest {
 
     @Test
-    void safepointRollsCurrentPage() {
+    void safepoint_whenAppended_rollsCurrentPage() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         assertThat(storage.currentPageNumber()).isEqualTo(0);
         storage.insert(1L, "a");
@@ -34,7 +34,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void emptyJournal_producesEmptyLivenessMap() {
+    void scan_emptyJournal_producesEmptyLivenessMap() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
@@ -43,7 +43,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void pageWithAllInsertsLive_isNotSparse() {
+    void page_withAllInsertsLive_isNotSparse() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.safepoint(0);
@@ -54,7 +54,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void pageWithAllInsertsRetracted_isSparse() {
+    void page_withAllInsertsRetracted_isSparse() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.retract(1L);
@@ -66,7 +66,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void insertAndRetractInSamePage_liveCountIsZero() {
+    void insertAndRetract_inSamePage_liveCountIsZero() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.retract(1L);
@@ -78,7 +78,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void retractOnLaterPage_countedInTotalOfRetractPage() {
+    void retract_onLaterPageThanInsert_countedInRetractPageTotal() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.safepoint(0);        // page "0": [insert(1)]
@@ -91,7 +91,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void retractOnLaterPage_decrementsLiveCountOnInsertPage() {
+    void retract_onLaterPageThanInsert_decrementsLiveCountOnInsertPage() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.safepoint(0);        // page "0": [insert(1)]
@@ -104,7 +104,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void modifyRecord_countsInTotalOnly() {
+    void modifyRecord_inLivenessTracking_countsInTotalOnly() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.modify(1L, "Rule_MyRule_modify_0", new byte[0]);
@@ -118,7 +118,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void ruleMatchRecord_countsInTotalOnly() {
+    void ruleMatchRecord_inLivenessTracking_countsInTotalOnly() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.ruleMatch(1L, "myRule", 1L);
@@ -132,7 +132,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void twoPages_trackedSeparately() {
+    void inserts_acrossTwoPages_trackedSeparately() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.safepoint(0);        // page "0": [insert(1)]
