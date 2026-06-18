@@ -13,33 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.core;
-
-import org.drools.journal.api.EmbeddedPayload;
-import org.drools.journal.api.ExternalRef;
+package org.drools.journal.api;
 
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class JournalPayloadBuilderTest {
+class ExternalRefStrategyTest {
+
+    private final ExternalRefStrategy strategy = new ExternalRefStrategy(fact -> "key-" + fact);
 
     @Test
-    void deserializeEmbeddedPayloadReturnsOriginalObject() {
-        String original = "hello journal";
-        EmbeddedPayload payload = JournalPayloadBuilder.embed(original);
+    void store_producesExternalRefWithCorrectTypeNameAndKey() {
+        ExternalRef ref = (ExternalRef) strategy.store(42, null);
 
-        Object result = JournalPayloadBuilder.deserialize(payload);
-
-        assertThat(result).isEqualTo(original);
+        assertThat(ref.typeName()).isEqualTo(Integer.class.getName());
+        assertThat(ref.dbKey()).isEqualTo("key-42");
     }
 
     @Test
-    void deserializeExternalRefThrowsUnsupportedOperationException() {
-        ExternalRef ref = new ExternalRef("com.example.Fact", "42");
+    void load_throwsUnsupportedOperation() {
+        ExternalRef ref = new ExternalRef("com.example.Fact", "key-123");
 
-        assertThatThrownBy(() -> JournalPayloadBuilder.deserialize(ref))
+        assertThatThrownBy(() -> strategy.load(ref))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 }

@@ -26,10 +26,10 @@ import org.drools.core.impl.InternalRuleBase;
 import org.drools.core.reteoo.EntryPointNode;
 import org.drools.core.rule.accessor.FactHandleFactory;
 import org.drools.core.rule.consequence.InternalMatch;
+import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ObjectStorageStrategy;
-import org.drools.journal.api.StorageDecision;
 import org.drools.kiesession.entrypoints.NamedEntryPoint;
 
 public class JournalledNamedEntryPoint extends NamedEntryPoint {
@@ -57,7 +57,7 @@ public class JournalledNamedEntryPoint extends NamedEntryPoint {
     protected ObjectStore createObjectStore(final EntryPointId entryPoint, final RuleBaseConfiguration conf, final ReteEvaluator reteEvaluator) {
         // Called from the full constructor via super() — read journal from the session Environment
         this.journal = (JournalStorage) ((WorkingMemory) reteEvaluator).getEnvironment().get(JournalledSessionFactory.JOURNAL_KEY);
-        this.strategy = (fact, handle) -> StorageDecision.EMBED;
+        this.strategy = new EmbedStrategy();
         return new JournalledObjectStore();
     }
 

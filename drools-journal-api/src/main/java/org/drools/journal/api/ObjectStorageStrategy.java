@@ -18,22 +18,29 @@ package org.drools.journal.api;
 import org.kie.api.runtime.rule.FactHandle;
 
 /**
- * SPI for deciding how an individual fact is stored in the journal.
+ * SPI for storing and loading individual facts in the journal.
  *
- * <p>Called on every {@code insert()} and {@code update()}. The session-level
- * {@link ObjectStorageMode} serves as the default; implementations of this
- * interface override that default for specific fact types.
+ * <p>Implementations own both directions: {@link #store} serialises a fact into
+ * a {@link Payload} on the write path; {@link #load} reconstructs the fact from
+ * that payload on the restore path. Built-in implementations: {@link EmbedStrategy}
+ * (Java serialisation inline) and {@link ExternalRefStrategy} (external store reference).
  */
-@FunctionalInterface
 public interface ObjectStorageStrategy {
 
     /**
-     * Decides how {@code fact} should be stored in the current journal record.
+     * Serialises {@code fact} into a journal payload.
      *
      * @param fact   the fact object being inserted or updated
      * @param handle the FactHandle assigned to this fact in the session
-     * @return {@link StorageDecision#EMBED} to inline the serialized bytes, or
-     *         {@link StorageDecision#EXTERNAL_REF} to store only a reference key
+     * @return an {@link EmbeddedPayload} with inline bytes, or an {@link ExternalRef}
      */
-    StorageDecision decide(Object fact, FactHandle handle);
+    Payload store(Object fact, FactHandle handle);
+
+    /**
+     * Reconstructs a fact from its journal payload.
+     *
+     * @param payload the payload produced by a prior {@link #store} call
+     * @return the original fact object
+     */
+    Object load(Payload payload);
 }

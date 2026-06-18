@@ -19,9 +19,9 @@ import org.drools.core.common.InternalWorkingMemoryEntryPoint;
 import org.drools.core.common.TruthMaintenanceSystem;
 import org.drools.core.common.TruthMaintenanceSystemFactory;
 import org.drools.core.rule.consequence.InternalMatch;
+import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RuleMatchRecord;
-import org.drools.journal.api.StorageDecision;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
 import org.kie.api.runtime.Environment;
@@ -55,7 +55,7 @@ public final class JournalledSessionFactory {
         if (storage.latestPosition() >= 0) {
             restore(session, storage);
         }
-        session.addEventListener(new JournallingRuntimeEventListener(storage, (fact, handle) -> StorageDecision.EMBED));
+        session.addEventListener(new JournallingRuntimeEventListener(storage, new EmbedStrategy()));
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, compactionInterval);
         coordinator.start();
         session.setCompactionCoordinator(coordinator);

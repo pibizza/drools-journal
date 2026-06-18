@@ -22,7 +22,7 @@ import org.drools.journal.api.SafepointRecord;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.core.JournalPayloadBuilder;
+import org.drools.journal.api.EmbedStrategy;
 import org.junit.jupiter.api.Test;
 import org.kie.api.KieBase;
 import org.kie.api.io.ResourceType;
@@ -65,7 +65,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithSurvivingFact_factIsInWorkingMemory() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
+        storage.append(new InsertRecord(1L, false, -1L, new EmbedStrategy().store(42, null)));
         storage.append(new SafepointRecord(1L, 0L));
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -77,7 +77,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithAlreadyFiredRule_ruleDoesNotFireAgain() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
+        storage.append(new InsertRecord(1L, false, -1L, new EmbedStrategy().store(42, null)));
         storage.append(new RuleMatchRecord(1L, "org.drools.journal.test", "ProcessFact", new long[]{1L}));
         storage.append(new SafepointRecord(1L, 0L));
 
@@ -90,7 +90,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithRetractedFact_sessionIsEmpty() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
+        storage.append(new InsertRecord(1L, false, -1L, new EmbedStrategy().store(42, null)));
         storage.append(new RetractRecord(1L));
         storage.append(new SafepointRecord(1L, 0L));
 
@@ -172,9 +172,9 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithLogicalFact_retractingSupportRemovesLogicalFact() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.append(new InsertRecord(1L, false, -1L, JournalPayloadBuilder.embed(42)));
+        storage.append(new InsertRecord(1L, false, -1L, new EmbedStrategy().store(42, null)));
         storage.append(new RuleMatchRecord(1L, "org.drools.journal.test", "LogicalInserter", new long[]{1L}));
-        storage.append(new InsertRecord(2L, true, 1L, JournalPayloadBuilder.embed("hello")));
+        storage.append(new InsertRecord(2L, true, 1L, new EmbedStrategy().store("hello", null)));
         storage.append(new SafepointRecord(1L, 0L));
 
         try (JournalledKieSession session = JournalledSessionFactory.open(

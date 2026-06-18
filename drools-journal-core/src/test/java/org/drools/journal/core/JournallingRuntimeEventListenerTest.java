@@ -16,9 +16,9 @@
 package org.drools.journal.core;
 
 import org.drools.core.common.DefaultFactHandle;
+import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.RetractRecord;
-import org.drools.journal.api.StorageDecision;
 import org.junit.jupiter.api.Test;
 import org.kie.api.definition.rule.Rule;
 import org.kie.api.event.rule.ObjectDeletedEvent;
@@ -35,7 +35,7 @@ class JournallingRuntimeEventListenerTest {
     void objectInserted_withNoActiveActivation_appendsNonLogicalInsertRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
-                storage, (fact, handle) -> StorageDecision.EMBED);
+                storage, new EmbedStrategy());
 
         DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectInserted(insertedEvent(handle, "hello"));
@@ -51,7 +51,7 @@ class JournallingRuntimeEventListenerTest {
     void objectDeleted_appendsRetractRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
-                storage, (fact, handle) -> StorageDecision.EMBED);
+                storage, new EmbedStrategy());
 
         DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectDeleted(deletedEvent(handle, "hello"));
@@ -65,7 +65,7 @@ class JournallingRuntimeEventListenerTest {
     void objectInserted_withActiveActivation_appendsLogicalInsertRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
-                storage, (fact, handle) -> StorageDecision.EMBED);
+                storage, new EmbedStrategy());
 
         listener.setCurrentActivationId(99L);
         DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
@@ -80,7 +80,7 @@ class JournallingRuntimeEventListenerTest {
     void objectUpdated_appendsNonLogicalInsertRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(
-                storage, (fact, handle) -> StorageDecision.EMBED);
+                storage, new EmbedStrategy());
 
         DefaultFactHandle handle = new DefaultFactHandle(42L, "updated");
         listener.objectUpdated(updatedEvent(handle, "updated", "old"));

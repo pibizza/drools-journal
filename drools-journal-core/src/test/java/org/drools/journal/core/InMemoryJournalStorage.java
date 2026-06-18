@@ -22,6 +22,7 @@ import java.util.Map;
 
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.EmbedStrategy;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -124,11 +125,11 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
 
     void insert(final long factHandleId, final Object fact) {
-        append(new InsertRecord(factHandleId, false, -1L, JournalPayloadBuilder.embed(fact)));
+        append(new InsertRecord(factHandleId, false, -1L, new EmbedStrategy().store(fact, null)));
     }
 
     void logicalInsert(final long factHandleId, final long justifyingRuleMatchId, final Object fact) {
-        append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, JournalPayloadBuilder.embed(fact)));
+        append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, new EmbedStrategy().store(fact, null)));
     }
 
     void modify(final long factHandleId, final String lambdaClassRef, final byte[] parameters) {
