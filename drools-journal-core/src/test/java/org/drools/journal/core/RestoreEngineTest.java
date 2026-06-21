@@ -84,7 +84,7 @@ class RestoreEngineTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
-        storage.compactionPrepare("m-1", "0");
+        storage.compactionPrepare("m-1", new String[]{"0"});
         storage.writeMergedPage("m-1", List.of(embed(1L, "fact")));
         // no COMMIT → pendingCommits never sealed → pageIndex stays [P0]
 
@@ -98,9 +98,9 @@ class RestoreEngineTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
-        storage.compactionPrepare("m-1", "0");
+        storage.compactionPrepare("m-1", new String[]{"0"});
         storage.writeMergedPage("m-1", List.of(embed(1L, "fact")));
-        storage.compactionCommit("m-1", "0");
+        storage.compactionCommit("m-1", new String[]{"0"});
         storage.safepoint(1L);   // seals commit → pageIndex = [Pm, P1]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
@@ -113,7 +113,7 @@ class RestoreEngineTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
-        storage.compactionPrepare("m-1", "0");
+        storage.compactionPrepare("m-1", new String[]{"0"});
         storage.writeMergedPage("m-1", List.of(embed(1L, "merged")));
         // no COMMIT → pageIndex stays [P0]
 
@@ -127,9 +127,9 @@ class RestoreEngineTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
-        storage.compactionPrepare("m-1", "0");
+        storage.compactionPrepare("m-1", new String[]{"0"});
         storage.writeMergedPage("m-1", List.of(embed(1L, "merged")));
-        storage.compactionCommit("m-1", "0");
+        storage.compactionCommit("m-1", new String[]{"0"});
         // no sealing safepoint → pendingCommits not sealed → pageIndex stays [P0]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();

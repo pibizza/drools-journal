@@ -61,8 +61,8 @@ interface JournalStorage {
     long retract(long factHandleId);
     long modify(long factHandleId, String lambdaClassRef, byte[] params);
     long ruleMatch(long id, String packageName, String ruleName, long[] factHandleIds);
-    long compactionPrepare(String preparingPageId, String... replacedPageIds);
-    long compactionCommit(String mergedPageId, String... replacedPageIds);
+    long compactionPrepare(String preparingPageId, String[] replacedPageIds);
+    long compactionCommit(String mergedPageId, String[] replacedPageIds);
     void safepoint();                       // seals a page; sequence number is auto-managed
 
     // Read API

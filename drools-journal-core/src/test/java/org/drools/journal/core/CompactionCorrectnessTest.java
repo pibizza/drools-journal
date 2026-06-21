@@ -124,7 +124,7 @@ class CompactionCorrectnessTest {
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
         // Simulate crash after PREPARE — no COMMIT written
-        storage.compactionPrepare("m-crash", "0", "1");
+        storage.compactionPrepare("m-crash", new String[]{"0", "1"});
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 

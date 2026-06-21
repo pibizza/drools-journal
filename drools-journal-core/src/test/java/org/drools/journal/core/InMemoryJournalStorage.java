@@ -90,12 +90,12 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
 
     @Override
-    public synchronized long compactionPrepare(final String preparingPageId, final String... replacedPageIds) {
+    public synchronized long compactionPrepare(final String preparingPageId, final String[] replacedPageIds) {
         return append(new CompactionPrepareRecord(preparingPageId, replacedPageIds));
     }
 
     @Override
-    public synchronized long compactionCommit(final String mergedPageId, final String... replacedPageIds) {
+    public synchronized long compactionCommit(final String mergedPageId, final String[] replacedPageIds) {
         return append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
     }
 

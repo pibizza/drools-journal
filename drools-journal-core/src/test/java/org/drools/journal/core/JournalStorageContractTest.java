@@ -281,7 +281,7 @@ public abstract class JournalStorageContractTest {
     @Test
     void compactionPrepare_producesCompactionPrepareRecordInScan() {
         try (JournalStorage storage = createStorage()) {
-            storage.compactionPrepare("merged-1", "page-a", "page-b");
+            storage.compactionPrepare("merged-1", new String[]{"page-a", "page-b"});
 
             try (JournalScanner scanner = storage.scan(0)) {
                 CompactionPrepareRecord record = (CompactionPrepareRecord) scanner.next();
@@ -294,7 +294,7 @@ public abstract class JournalStorageContractTest {
     @Test
     void compactionCommit_producesCompactionCommitRecordInScan() {
         try (JournalStorage storage = createStorage()) {
-            storage.compactionCommit("merged-1", "page-a", "page-b");
+            storage.compactionCommit("merged-1", new String[]{"page-a", "page-b"});
 
             try (JournalScanner scanner = storage.scan(0)) {
                 CompactionCommitRecord record = (CompactionCommitRecord) scanner.next();

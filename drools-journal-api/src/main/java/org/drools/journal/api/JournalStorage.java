@@ -95,7 +95,7 @@ public interface JournalStorage extends AutoCloseable {
      * @param replacedPageIds IDs of the source pages being compacted
      * @return position assigned to this record
      */
-    long compactionPrepare(String preparingPageId, String... replacedPageIds);
+    long compactionPrepare(String preparingPageId, String[] replacedPageIds);
 
     /**
      * Records the successful completion of a compaction cycle. From this point
@@ -105,7 +105,7 @@ public interface JournalStorage extends AutoCloseable {
      * @param replacedPageIds IDs of the retired source pages
      * @return position assigned to this record
      */
-    long compactionCommit(String mergedPageId, String... replacedPageIds);
+    long compactionCommit(String mergedPageId, String[] replacedPageIds);
 
     /**
      * Appends a {@link SafepointRecord} with the next sequence number and the
