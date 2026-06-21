@@ -56,7 +56,8 @@ The write side is semantic — callers describe what happened, not how it is sto
 ```java
 interface JournalStorage {
     // Semantic write API
-    long insert(long factHandleId, Payload payload, boolean logical, long justifyingRuleMatchId);
+    long insert(long factHandleId, Payload payload);
+    long insertLogical(long factHandleId, Payload payload, long justifyingRuleMatchId);
     long retract(long factHandleId);
     long modify(long factHandleId, String lambdaClassRef, byte[] params);
     long ruleMatch(long id, String packageName, String ruleName, long[] factHandleIds);

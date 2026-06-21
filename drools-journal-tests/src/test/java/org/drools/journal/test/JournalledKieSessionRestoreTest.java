@@ -61,7 +61,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithSurvivingFact_factIsInWorkingMemory() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, new EmbedStrategy().store(42, null), false, -1L);
+        storage.insert(1L, new EmbedStrategy().store(42, null));
         storage.safepoint();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(
@@ -73,7 +73,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithAlreadyFiredRule_ruleDoesNotFireAgain() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, new EmbedStrategy().store(42, null), false, -1L);
+        storage.insert(1L, new EmbedStrategy().store(42, null));
         storage.ruleMatch(1L, "org.drools.journal.test", "ProcessFact", new long[]{1L});
         storage.safepoint();
 
@@ -86,7 +86,7 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithRetractedFact_sessionIsEmpty() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, new EmbedStrategy().store(42, null), false, -1L);
+        storage.insert(1L, new EmbedStrategy().store(42, null));
         storage.retract(1L);
         storage.safepoint();
 
@@ -168,9 +168,9 @@ class JournalledKieSessionRestoreTest {
     @Test
     void open_fromJournalWithLogicalFact_retractingSupportRemovesLogicalFact() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, new EmbedStrategy().store(42, null), false, -1L);
+        storage.insert(1L, new EmbedStrategy().store(42, null));
         storage.ruleMatch(1L, "org.drools.journal.test", "LogicalInserter", new long[]{1L});
-        storage.insert(2L, new EmbedStrategy().store("hello", null), true, 1L);
+        storage.insertLogical(2L, new EmbedStrategy().store("hello", null), 1L);
         storage.safepoint();
 
         try (JournalledKieSession session = JournalledSessionFactory.open(

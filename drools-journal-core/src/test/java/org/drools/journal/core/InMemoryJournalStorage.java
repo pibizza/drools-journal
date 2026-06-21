@@ -63,9 +63,14 @@ public class InMemoryJournalStorage implements JournalStorage {
     // -------------------------------------------------------------------------
 
     @Override
-    public synchronized long insert(final long factHandleId, final Payload payload,
-                                    final boolean logical, final long justifyingRuleMatchId) {
-        return append(new InsertRecord(factHandleId, logical, justifyingRuleMatchId, payload));
+    public synchronized long insert(final long factHandleId, final Payload payload) {
+        return append(new InsertRecord(factHandleId, false, -1L, payload));
+    }
+
+    @Override
+    public synchronized long insertLogical(final long factHandleId, final Payload payload,
+                                           final long justifyingRuleMatchId) {
+        return append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, payload));
     }
 
     @Override
@@ -151,12 +156,12 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     /** Convenience: insert a non-logical fact using EmbedStrategy. */
     void insert(final long factHandleId, final Object fact) {
-        insert(factHandleId, new EmbedStrategy().store(fact, null), false, -1L);
+        insert(factHandleId, new EmbedStrategy().store(fact, null));
     }
 
     /** Convenience: insert a logical fact using EmbedStrategy. */
     void logicalInsert(final long factHandleId, final long justifyingRuleMatchId, final Object fact) {
-        insert(factHandleId, new EmbedStrategy().store(fact, null), true, justifyingRuleMatchId);
+        insertLogical(factHandleId, new EmbedStrategy().store(fact, null), justifyingRuleMatchId);
     }
 
     /** Convenience: safepoint with an explicit sequence number (for deterministic tests). */

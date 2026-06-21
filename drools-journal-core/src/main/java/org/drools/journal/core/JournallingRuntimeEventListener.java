@@ -52,15 +52,17 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
     @Override
     public void objectInserted(final ObjectInsertedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        boolean logical = currentActivationId >= 0;
-        journal.insert(handle.getId(), strategy.store(event.getObject(), handle),
-                logical, currentActivationId);
+        if (currentActivationId >= 0) {
+            journal.insertLogical(handle.getId(), strategy.store(event.getObject(), handle), currentActivationId);
+        } else {
+            journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        }
     }
 
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        journal.insert(handle.getId(), strategy.store(event.getObject(), handle), false, -1L);
+        journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
     }
 
     @Override

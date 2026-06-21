@@ -40,13 +40,22 @@ public interface JournalStorage extends AutoCloseable {
     /**
      * Records that a fact was inserted into the session.
      *
-     * @param factHandleId          ID of the fact handle
-     * @param payload               serialized fact
-     * @param logical               {@code true} if the insert was driven by a rule consequence
-     * @param justifyingRuleMatchId ID of the activation that caused the insert, or {@code -1}
+     * @param factHandleId ID of the fact handle
+     * @param payload      serialized fact
      * @return position assigned to this record
      */
-    long insert(long factHandleId, Payload payload, boolean logical, long justifyingRuleMatchId);
+    long insert(long factHandleId, Payload payload);
+
+    /**
+     * Records that a fact was inserted logically — driven by a rule consequence
+     * and justified by a specific activation.
+     *
+     * @param factHandleId          ID of the fact handle
+     * @param payload               serialized fact
+     * @param justifyingRuleMatchId ID of the activation that caused the insert
+     * @return position assigned to this record
+     */
+    long insertLogical(long factHandleId, Payload payload, long justifyingRuleMatchId);
 
     /**
      * Records that a fact was retracted from the session.

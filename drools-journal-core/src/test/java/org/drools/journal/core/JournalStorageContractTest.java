@@ -221,10 +221,10 @@ public abstract class JournalStorageContractTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void insert_nonLogical_producesInsertRecordInScan() {
+    void insert_producesInsertRecordInScan() {
         try (JournalStorage storage = createStorage()) {
             Payload payload = samplePayload();
-            storage.insert(42L, payload, false, -1L);
+            storage.insert(42L, payload);
 
             try (JournalScanner scanner = storage.scan(0)) {
                 InsertRecord record = (InsertRecord) scanner.next();
@@ -237,10 +237,10 @@ public abstract class JournalStorageContractTest {
     }
 
     @Test
-    void insert_logical_producesLogicalInsertRecordInScan() {
+    void insertLogical_producesLogicalInsertRecordInScan() {
         try (JournalStorage storage = createStorage()) {
             Payload payload = samplePayload();
-            storage.insert(7L, payload, true, 99L);
+            storage.insertLogical(7L, payload, 99L);
 
             try (JournalScanner scanner = storage.scan(0)) {
                 InsertRecord record = (InsertRecord) scanner.next();
