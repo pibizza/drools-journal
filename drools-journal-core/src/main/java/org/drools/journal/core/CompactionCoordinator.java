@@ -15,8 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
@@ -141,7 +139,7 @@ class CompactionCoordinator {
         final String[] replacedPageIds = pageIds.toArray(new String[0]);
 
         // Phase 1 — PREPARE
-        storage.append(new CompactionPrepareRecord(mergedPageId, replacedPageIds));
+        storage.compactionPrepare(mergedPageId, replacedPageIds);
 
         // Phase 2 — WRITE: collect live InsertRecords from source pages.
         // A fact is live if it was inserted in a source page and never retracted.
@@ -173,6 +171,6 @@ class CompactionCoordinator {
         storage.writeMergedPage(mergedPageId, new ArrayList<>(liveInserts.values()));
 
         // Phase 3 — COMMIT
-        storage.append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
+        storage.compactionCommit(mergedPageId, replacedPageIds);
     }
 }

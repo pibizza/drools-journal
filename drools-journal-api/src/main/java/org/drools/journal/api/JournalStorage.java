@@ -26,17 +26,77 @@ import java.util.List;
  *   <li>Positions are monotonically increasing {@code long} values that can be
  *       passed directly to {@link #scan(long)} in a subsequent call.</li>
  * </ul>
+ *
+ * <p>The write side is intentionally semantic: callers describe <em>what happened</em>
+ * (insert, retract, ruleMatch, …) rather than constructing record objects.
+ * Record types are an internal concern of each storage implementation.
  */
 public interface JournalStorage extends AutoCloseable {
 
+    // -------------------------------------------------------------------------
+    // Semantic write API
+    // -------------------------------------------------------------------------
+
     /**
-     * Appends a record to the journal.
+     * Records that a fact was inserted into the session.
      *
-     * @param record the journal record to append
-     * @return the position assigned to this record, usable as {@code fromPosition}
-     *         in a later {@link #scan(long)} call
+     * @param factHandleId          ID of the fact handle
+     * @param payload               serialized fact
+     * @param logical               {@code true} if the insert was driven by a rule consequence
+     * @param justifyingRuleMatchId ID of the activation that caused the insert, or {@code -1}
+     * @return position assigned to this record
      */
-    long append(JournalRecord record);
+    long insert(long factHandleId, Payload payload, boolean logical, long justifyingRuleMatchId);
+
+    /**
+     * Records that a fact was retracted from the session.
+     *
+     * @param factHandleId ID of the fact handle
+     * @return position assigned to this record
+     */
+    long retract(long factHandleId);
+
+    /**
+     * Records a delta-style modification of a fact.
+     *
+     * @param factHandleId   ID of the fact handle
+     * @param lambdaClassRef class reference of the modify lambda
+     * @param params         serialized lambda parameters
+     * @return position assigned to this record
+     */
+    long modify(long factHandleId, String lambdaClassRef, byte[] params);
+
+    /**
+     * Records that a rule activation fired.
+     *
+     * @param id            surrogate key for this activation
+     * @param packageName   package of the rule that fired
+     * @param ruleName      name of the rule that fired
+     * @param factHandleIds IDs of the facts that matched the rule
+     * @return position assigned to this record
+     */
+    long ruleMatch(long id, String packageName, String ruleName, long[] factHandleIds);
+
+    /**
+     * Records the start of a compaction cycle. The preparing page is not yet
+     * canonical; {@code replacedPageIds} remain live until the matching
+     * {@link #compactionCommit}.
+     *
+     * @param preparingPageId ID of the merged page being written
+     * @param replacedPageIds IDs of the source pages being compacted
+     * @return position assigned to this record
+     */
+    long compactionPrepare(String preparingPageId, String... replacedPageIds);
+
+    /**
+     * Records the successful completion of a compaction cycle. From this point
+     * {@code mergedPageId} is canonical and {@code replacedPageIds} are retired.
+     *
+     * @param mergedPageId    ID of the now-canonical merged page
+     * @param replacedPageIds IDs of the retired source pages
+     * @return position assigned to this record
+     */
+    long compactionCommit(String mergedPageId, String... replacedPageIds);
 
     /**
      * Appends a {@link SafepointRecord} with the next sequence number and the
@@ -46,28 +106,32 @@ public interface JournalStorage extends AutoCloseable {
      */
     void safepoint();
 
+    // -------------------------------------------------------------------------
+    // Read API
+    // -------------------------------------------------------------------------
+
     /**
      * Opens a forward-only scanner starting at {@code fromPosition}.
      * The first call to {@link JournalScanner#next()} returns the record at
      * {@code fromPosition}, or the first record after it if that exact position
      * holds no record boundary.
      *
-     * @param fromPosition position returned by a previous {@link #append} call,
+     * @param fromPosition position returned by a previous write call,
      *                     or {@code 0} to scan from the beginning
      * @return a scanner positioned at {@code fromPosition}; caller must close it
      */
     JournalScanner scan(long fromPosition);
 
     /**
-     * Returns the position of the most recently appended record, or {@code -1}
+     * Returns the position of the most recently written record, or {@code -1}
      * if the journal is empty.
      */
     long latestPosition();
 
     /**
      * Writes a merged page produced by compaction. The page is stored in the
-     * journal but is not part of the live page sequence until the caller appends
-     * a {@link CompactionCommitRecord} followed by a safepoint.
+     * journal but is not part of the live page sequence until the caller calls
+     * {@link #compactionCommit} followed by {@link #safepoint()}.
      *
      * @param pageId  the unique identifier for the merged page
      * @param records the live records to include in the merged page

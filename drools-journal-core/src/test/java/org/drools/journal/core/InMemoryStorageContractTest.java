@@ -17,6 +17,7 @@ package org.drools.journal.core;
 
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.RetractRecord;
 
 /**
  * Runs the {@link JournalStorageContractTest} suite against {@link InMemoryJournalStorage}.
@@ -30,6 +31,6 @@ class InMemoryStorageContractTest extends JournalStorageContractTest {
 
     @Override
     protected long appendTestRecord(final JournalStorage storage, final JournalRecord record) {
-        return storage.append(record);
+        return storage.retract(((RetractRecord) record).factHandleId());
     }
 }

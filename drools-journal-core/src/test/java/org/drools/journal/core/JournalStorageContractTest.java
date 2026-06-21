@@ -18,9 +18,15 @@ package org.drools.journal.core;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.drools.journal.api.CompactionCommitRecord;
+import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.Payload;
+import org.drools.journal.api.RetractRecord;
+import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
 import org.junit.jupiter.api.Test;
 
@@ -40,16 +46,19 @@ public abstract class JournalStorageContractTest {
     protected abstract JournalStorage createStorage();
 
     /**
-     * Appends {@code record} to {@code storage} and returns its assigned position.
-     * Implementations bridge their own append mechanism here — e.g.
-     * {@code appendRecord(JournalRecord)} for in-memory, or
-     * {@code append(ByteBuffer)} with serialization for Chronicle/Aeron.
+     * Appends a retract record to {@code storage} and returns its assigned position.
+     * Implementations bridge their own retract mechanism here.
      */
     protected abstract long appendTestRecord(JournalStorage storage, JournalRecord record);
 
-    /** Produces a distinct {@link SafepointRecord} for use as test data. */
+    /** Produces a distinct {@link RetractRecord} for use as test data. */
     protected final JournalRecord sampleRecord(final int index) {
-        return new SafepointRecord(index, 1000L + index);
+        return new RetractRecord(index);
+    }
+
+    /** Produces a simple {@link Payload} for use in semantic write tests. */
+    protected Payload samplePayload() {
+        return new EmbedStrategy().store("test-fact", null);
     }
 
     // -------------------------------------------------------------------------
@@ -217,6 +226,94 @@ public abstract class JournalStorageContractTest {
             JournalScanner scanner = storage.scan(0);
             scanner.close();
             scanner.close();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Semantic write API — insert / retract / ruleMatch / compaction
+    // -------------------------------------------------------------------------
+
+    @Test
+    void insert_nonLogical_producesInsertRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            Payload payload = samplePayload();
+            storage.insert(42L, payload, false, -1L);
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                InsertRecord record = (InsertRecord) scanner.next();
+                assertThat(record.factHandleId()).isEqualTo(42L);
+                assertThat(record.logical()).isFalse();
+                assertThat(record.justifyingRuleMatchId()).isEqualTo(-1L);
+                assertThat(record.payload()).isEqualTo(payload);
+            }
+        }
+    }
+
+    @Test
+    void insert_logical_producesLogicalInsertRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            Payload payload = samplePayload();
+            storage.insert(7L, payload, true, 99L);
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                InsertRecord record = (InsertRecord) scanner.next();
+                assertThat(record.factHandleId()).isEqualTo(7L);
+                assertThat(record.logical()).isTrue();
+                assertThat(record.justifyingRuleMatchId()).isEqualTo(99L);
+            }
+        }
+    }
+
+    @Test
+    void retract_producesRetractRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            storage.retract(55L);
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                RetractRecord record = (RetractRecord) scanner.next();
+                assertThat(record.factHandleId()).isEqualTo(55L);
+            }
+        }
+    }
+
+    @Test
+    void ruleMatch_producesRuleMatchRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            storage.ruleMatch(3L, "org.example", "myRule", new long[]{1L, 2L});
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                RuleMatchRecord record = (RuleMatchRecord) scanner.next();
+                assertThat(record.id()).isEqualTo(3L);
+                assertThat(record.packageName()).isEqualTo("org.example");
+                assertThat(record.ruleName()).isEqualTo("myRule");
+                assertThat(record.factHandleIds()).containsExactly(1L, 2L);
+            }
+        }
+    }
+
+    @Test
+    void compactionPrepare_producesCompactionPrepareRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            storage.compactionPrepare("merged-1", "page-a", "page-b");
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                CompactionPrepareRecord record = (CompactionPrepareRecord) scanner.next();
+                assertThat(record.preparingPageId()).isEqualTo("merged-1");
+                assertThat(record.replacedPageIds()).containsExactly("page-a", "page-b");
+            }
+        }
+    }
+
+    @Test
+    void compactionCommit_producesCompactionCommitRecordInScan() {
+        try (JournalStorage storage = createStorage()) {
+            storage.compactionCommit("merged-1", "page-a", "page-b");
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                CompactionCommitRecord record = (CompactionCommitRecord) scanner.next();
+                assertThat(record.mergedPageId()).isEqualTo("merged-1");
+                assertThat(record.replacedPageIds()).containsExactly("page-a", "page-b");
+            }
         }
     }
 
