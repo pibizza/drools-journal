@@ -15,7 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalStorage;
 
 /**
@@ -26,10 +25,5 @@ class InMemoryStorageContractTest extends JournalStorageContractTest {
     @Override
     protected JournalStorage createStorage() {
         return new InMemoryJournalStorage();
-    }
-
-    @Override
-    protected long appendTestRecord(final JournalStorage storage, final JournalRecord record) {
-        return storage.append(record);
     }
 }

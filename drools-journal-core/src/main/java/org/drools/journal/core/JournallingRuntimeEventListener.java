@@ -18,11 +18,8 @@ package org.drools.journal.core;
 import java.util.List;
 
 import org.drools.core.common.InternalFactHandle;
-import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ObjectStorageStrategy;
-import org.drools.journal.api.RetractRecord;
-import org.drools.journal.api.RuleMatchRecord;
 import org.kie.api.event.rule.AfterMatchFiredEvent;
 import org.kie.api.event.rule.AgendaEventListener;
 import org.kie.api.event.rule.AgendaGroupPoppedEvent;
@@ -55,22 +52,23 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
     @Override
     public void objectInserted(final ObjectInsertedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        boolean logical = currentActivationId >= 0;
-        journal.append(new InsertRecord(handle.getId(), logical, currentActivationId,
-                strategy.store(event.getObject(), handle)));
+        if (currentActivationId >= 0) {
+            journal.insertLogical(handle.getId(), strategy.store(event.getObject(), handle), currentActivationId);
+        } else {
+            journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        }
     }
 
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        journal.append(new InsertRecord(handle.getId(), false, -1L,
-                strategy.store(event.getObject(), handle)));
+        journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
     }
 
     @Override
     public void objectDeleted(final ObjectDeletedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        journal.append(new RetractRecord(handle.getId()));
+        journal.retract(handle.getId());
     }
 
     // --- AgendaEventListener ---
@@ -89,9 +87,9 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
                 .mapToLong(h -> ((InternalFactHandle) h).getId())
                 .toArray();
         try {
-            journal.append(new RuleMatchRecord(currentActivationId,
+            journal.ruleMatch(currentActivationId,
                     event.getMatch().getRule().getPackageName(),
-                    event.getMatch().getRule().getName(), ids));
+                    event.getMatch().getRule().getName(), ids);
         } finally {
             currentActivationId = -1L;
         }

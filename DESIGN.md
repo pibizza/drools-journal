@@ -50,11 +50,25 @@ Payload (sealed interface, used by InsertRecord)
 
 ### JournalStorage / JournalScanner
 
+The write side is semantic — callers describe what happened, not how it is stored.
+`JournalRecord` types are an internal concern of each implementation.
+
 ```java
 interface JournalStorage {
-    long append(JournalRecord record);      // returns durable, monotonically increasing position
-    JournalScanner scan(long fromPosition); // sequential scan from position for restore
+    // Semantic write API
+    long insert(long factHandleId, Payload payload);
+    long insertLogical(long factHandleId, Payload payload, long justifyingRuleMatchId);
+    long retract(long factHandleId);
+    long modify(long factHandleId, String lambdaClassRef, byte[] params);
+    long ruleMatch(long id, String packageName, String ruleName, long[] factHandleIds);
+    long compactionPrepare(String preparingPageId, String[] replacedPageIds);
+    long compactionCommit(String mergedPageId, String[] replacedPageIds);
+    void safepoint();                       // seals a page; sequence number is auto-managed
+
+    // Read API
+    JournalScanner scan(long fromPosition); // sequential scan for restore
     long latestPosition();
+    void writeMergedPage(String pageId, List<JournalRecord> records);
     void close();                           // idempotent
 }
 ```
