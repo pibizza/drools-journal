@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.CompactionCommitRecord;
+import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
@@ -92,39 +94,60 @@ class CompactionCoordinator {
     }
 
     static Map<String, long[]> scanLiveness(final JournalStorage storage) {
-        Map<String, long[]> liveness = new HashMap<>();
-        Map<Long, String> factToPage = new HashMap<>();
-        List<JournalRecord> pending = new ArrayList<>();
+        final Map<String, long[]> liveness = new HashMap<>();
+        final Map<Long, String> factToPage = new HashMap<>();
+        final List<JournalRecord> pending = new ArrayList<>();
+        String lastPageId = null;
 
         try (JournalScanner scanner = storage.scan(0)) {
             while (scanner.hasNext()) {
-                JournalRecord record = scanner.next();
-                if (record instanceof SafepointRecord sp) {
-                    String pageId = String.valueOf(sp.sequenceNo());
-                    liveness.put(pageId, new long[2]);
-                    for (JournalRecord r : pending) {
-                        if (r instanceof InsertRecord insert) {
-                            liveness.get(pageId)[0]++;
-                            liveness.get(pageId)[1]++;
-                            factToPage.put(insert.factHandleId(), pageId);
-                        } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
-                            liveness.get(pageId)[1]++;
-                        } else if (r instanceof RetractRecord retract) {
-                            liveness.get(pageId)[1]++;
-                            String origin = factToPage.remove(retract.factHandleId());
-                            if (origin != null) {
-                                liveness.get(origin)[0]--;
-                            }
-                        }
-                    }
+                final JournalRecord record = scanner.next();
+                final String pageId = scanner.currentPageId();
+
+                // Physical page boundary (size-triggered roll, no SafepointRecord)
+                if (!pageId.equals(lastPageId) && lastPageId != null) {
+                    flushPageLiveness(lastPageId, pending, liveness, factToPage);
                     pending.clear();
-                } else {
+                }
+                lastPageId = pageId;
+
+                if (record instanceof SafepointRecord) {
+                    flushPageLiveness(pageId, pending, liveness, factToPage);
+                    pending.clear();
+                } else if (!(record instanceof CompactionPrepareRecord
+                        || record instanceof CompactionCommitRecord)) {
                     pending.add(record);
                 }
             }
+            // Trailing open page (no safepoint yet) — not eligible for compaction; discard
         }
 
         return liveness;
+    }
+
+    private static void flushPageLiveness(final String pageId,
+                                          final List<JournalRecord> pending,
+                                          final Map<String, long[]> liveness,
+                                          final Map<Long, String> factToPage) {
+        if (pending.isEmpty()) {
+            return;
+        }
+        liveness.computeIfAbsent(pageId, k -> new long[2]);
+        for (final JournalRecord r : pending) {
+            if (r instanceof InsertRecord insert) {
+                liveness.get(pageId)[0]++;
+                liveness.get(pageId)[1]++;
+                factToPage.put(insert.factHandleId(), pageId);
+            } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
+                liveness.get(pageId)[1]++;
+            } else if (r instanceof RetractRecord retract) {
+                liveness.get(pageId)[1]++;
+                final String origin = factToPage.remove(retract.factHandleId());
+                if (origin != null) {
+                    liveness.get(origin)[0]--;
+                }
+            }
+        }
     }
 
     static boolean isSparse(final long[] counts) {
@@ -147,12 +170,25 @@ class CompactionCoordinator {
         final Map<Long, InsertRecord> liveInserts = new LinkedHashMap<>();
 
         try (JournalScanner scanner = storage.scan(0)) {
+            String lastPageId = null;
             final List<InsertRecord> pageBuffer = new ArrayList<>();
             while (scanner.hasNext()) {
                 final JournalRecord record = scanner.next();
-                if (record instanceof SafepointRecord sp) {
-                    // The safepoint closes the page — now we know the page ID.
-                    if (pageIds.contains(String.valueOf(sp.sequenceNo()))) {
+                final String pageId = scanner.currentPageId();
+
+                // Physical page boundary (size-triggered roll)
+                if (!pageId.equals(lastPageId) && lastPageId != null) {
+                    if (pageIds.contains(lastPageId)) {
+                        for (final InsertRecord insert : pageBuffer) {
+                            liveInserts.put(insert.factHandleId(), insert);
+                        }
+                    }
+                    pageBuffer.clear();
+                }
+                lastPageId = pageId;
+
+                if (record instanceof SafepointRecord) {
+                    if (pageIds.contains(pageId)) {
                         for (final InsertRecord insert : pageBuffer) {
                             liveInserts.put(insert.factHandleId(), insert);
                         }
@@ -164,7 +200,7 @@ class CompactionCoordinator {
                     retractedIds.add(retract.factHandleId());
                 }
             }
-            // Trailing buffer (open page, merged pages) contains no source-page inserts — discard.
+            // Trailing open page — no source-page inserts; discard.
         }
         liveInserts.keySet().removeAll(retractedIds);
 

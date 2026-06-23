@@ -159,6 +159,39 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void scanLiveness_multiplePhysicalPagesPerSafepoint_trackedSeparately() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");  // page "0"
+        storage.rollPage();        // size-triggered roll — page "0" closes
+        storage.insert(2L, "b");  // page "1"
+        storage.safepoint(0);     // page "1" closes with safepoint
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness).hasSize(2);
+        assertThat(liveness.get("0")[0]).isEqualTo(1L); // live
+        assertThat(liveness.get("0")[1]).isEqualTo(1L); // total
+        assertThat(liveness.get("1")[0]).isEqualTo(1L); // live
+        assertThat(liveness.get("1")[1]).isEqualTo(1L); // total
+    }
+
+    @Test
+    void scanLiveness_retractOnRolledPage_decrementsInsertPageLiveCount() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");  // page "0"
+        storage.rollPage();        // page "0" closes (size roll)
+        storage.retract(1L);       // page "1"
+        storage.safepoint(0);     // page "1" closes
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness.get("0")[0]).isEqualTo(0L); // insert was retracted
+        assertThat(liveness.get("0")[1]).isEqualTo(1L); // 1 total record
+        assertThat(liveness.get("1")[0]).isEqualTo(0L); // retract has no live count
+        assertThat(liveness.get("1")[1]).isEqualTo(1L); // 1 total record
+    }
+
+    @Test
     void durationZero_start_doesNotCreateCompactorThread() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
