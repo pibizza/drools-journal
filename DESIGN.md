@@ -66,7 +66,7 @@ interface JournalStorage {
     void safepoint();                       // seals a page; sequence number is auto-managed
 
     // Read API
-    JournalScanner scan(long fromPosition); // sequential scan for restore
+    JournalScanner scan(long fromPosition); // sequential scan for restore; exposes currentPageId()
     long latestPosition();
     void writeMergedPage(String pageId, List<JournalRecord> records);
     void close();                           // idempotent
@@ -250,10 +250,15 @@ loss is one page since the last safepoint.
 working memory is fully consistent at that point. This is the sole safepoint
 write point.
 
-**Page definition:** the sequence of records between two consecutive
-`SafepointRecord`s. Page ID = `String.valueOf(SafepointRecord.sequenceNo)`.
-Page boundaries fall out of the safepoint mechanism — no `JournalStorage` SPI
-changes required.
+**Page definition:** a physical storage unit bounded by either a safepoint or
+a `PageRollStrategy` threshold (size, count). Each page is assigned a stable
+ID by the storage implementation at **creation time** — not derived from
+`SafepointRecord.sequenceNo`. `SafepointRecord` always forces a page roll, so
+a physical page never crosses a safepoint boundary; all records on a page
+belong to exactly one safepoint interval. `JournalScanner.currentPageId()`
+exposes the current physical page ID to all readers (coordinator, restore
+engine). `SafepointRecord.sequenceNo` is a pure consistency counter, not a
+page ID. See ADR-0001.
 
 **Liveness tracking:** `CompactionCoordinator` performs a periodic full journal
 rescan (not write-path interception) on a daemon background thread
@@ -292,9 +297,10 @@ Concurrent compactions on distinct page pairs are supported.
 | New module vs extend StorageManager | New module | `Storage<K,V>` is wrong abstraction for append-only |
 | Modify capture | Compiler-driven + full-snapshot fallback | No proxy overhead; no API change |
 | Page boundary | Pluggable strategy; safepoints always force roll | Flexible + consistent rollback semantics |
+| Page ID scheme | Assigned by storage at page-creation time; exposed via `JournalScanner.currentPageId()` | Supports size-based rolling without coupling page IDs to safepoint sequence (ADR-0001) |
 | Object storage | Session default + per-object strategy override | Flexibility without domain model pollution |
 | Compaction threading | Separate thread/JVM, fully non-blocking | Writer never pauses |
-| Page index | Derived on restore by sequential scan | No ongoing write overhead |
+| Page index | Derived on restore by sequential scan using physical page IDs | No ongoing write overhead |
 | TMS reconstruction | Surrogate ID on RuleMatchRecord | Compact, causal, no side effects |
 | Storage library | Chronicle Queue (default), Aeron Archive (distributed) | Latency + Apache 2.0 |
 | Compaction atomicity | Four-step PREPARE/COMMIT via journal appends | No filesystem rename tricks; works for both backends |
