@@ -195,6 +195,47 @@ public abstract class JournalStorageContractTest {
         }
     }
 
+    @Test
+    void scannerCurrentPageId_stableWithinPage() {
+        try (JournalStorage storage = createStorage()) {
+            storage.insert(1L, samplePayload());
+            storage.insert(2L, samplePayload());
+            storage.safepoint();
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                scanner.next();
+                String pageId = scanner.currentPageId();
+                assertThat(pageId).isNotNull();
+                scanner.next(); // second insert, same page
+                assertThat(scanner.currentPageId()).isEqualTo(pageId);
+                scanner.next(); // safepoint, still same page
+                assertThat(scanner.currentPageId()).isEqualTo(pageId);
+            }
+        }
+    }
+
+    @Test
+    void scannerCurrentPageId_changesAfterSafepoint() {
+        try (JournalStorage storage = createStorage()) {
+            storage.insert(1L, samplePayload());
+            storage.safepoint();
+            storage.insert(2L, samplePayload());
+            storage.safepoint();
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                scanner.next(); // Insert(1) — page 0
+                String page0Id = scanner.currentPageId();
+                scanner.next(); // SafepointRecord — still page 0
+                assertThat(scanner.currentPageId()).isEqualTo(page0Id);
+                scanner.next(); // Insert(2) — page 1
+                String page1Id = scanner.currentPageId();
+                assertThat(page1Id).isNotEqualTo(page0Id);
+                scanner.next(); // SafepointRecord — still page 1
+                assertThat(scanner.currentPageId()).isEqualTo(page1Id);
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // close — idempotency
     // -------------------------------------------------------------------------

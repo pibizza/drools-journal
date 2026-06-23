@@ -42,8 +42,12 @@ import org.drools.journal.api.SafepointRecord;
 public class InMemoryJournalStorage implements JournalStorage {
 
     static final class Page {
-        String id;
+        final String id;
         final List<JournalRecord> records = new ArrayList<>();
+
+        Page(final String id) {
+            this.id = id;
+        }
     }
 
     /** All pages ever created, in creation order. Primary sequential structure. */
@@ -52,8 +56,10 @@ public class InMemoryJournalStorage implements JournalStorage {
     /** Lookup helper — not the primary structure. */
     private final Map<String, Page> pageById = new HashMap<>();
 
-    /** Currently open page — accumulates records until the next safepoint. */
-    private Page currentPage = new Page();
+    private long pageCounter = 0L;
+
+    /** Currently open page — accumulates records until the next safepoint or roll. */
+    private Page currentPage = new Page(String.valueOf(pageCounter++));
 
     private boolean closed = false;
     private long safepointSequenceNo = 0L;
@@ -111,8 +117,7 @@ public class InMemoryJournalStorage implements JournalStorage {
     @Override
     public synchronized void writeMergedPage(final String pageId, final List<JournalRecord> records) {
         checkOpen();
-        final Page page = new Page();
-        page.id = pageId;
+        final Page page = new Page(pageId);
         page.records.addAll(records);
         journal.add(page);
         pageById.put(pageId, page);
@@ -122,11 +127,18 @@ public class InMemoryJournalStorage implements JournalStorage {
     public synchronized JournalScanner scan(final long fromPosition) {
         checkOpen();
         final List<JournalRecord> flat = new ArrayList<>();
+        final List<String> pageIdsPerRecord = new ArrayList<>();
         for (final Page page : journal) {
-            flat.addAll(page.records);
+            for (final JournalRecord r : page.records) {
+                flat.add(r);
+                pageIdsPerRecord.add(page.id);
+            }
         }
-        flat.addAll(currentPage.records);
-        return new InMemoryJournalScanner(List.copyOf(flat), fromPosition);
+        for (final JournalRecord r : currentPage.records) {
+            flat.add(r);
+            pageIdsPerRecord.add(currentPage.id);
+        }
+        return new InMemoryJournalScanner(List.copyOf(flat), List.copyOf(pageIdsPerRecord), fromPosition);
     }
 
     @Override
@@ -169,6 +181,14 @@ public class InMemoryJournalStorage implements JournalStorage {
         append(new SafepointRecord(sequenceNo, 0L));
     }
 
+    /** Forces a physical page roll without a safepoint — simulates size-triggered rolling in tests. */
+    synchronized void rollPage() {
+        checkOpen();
+        journal.add(currentPage);
+        pageById.put(currentPage.id, currentPage);
+        currentPage = new Page(String.valueOf(pageCounter++));
+    }
+
     /** Convenience: ruleMatch without an explicit package name. */
     void ruleMatch(final long id, final String ruleName, final long... factHandleIds) {
         ruleMatch(id, "test", ruleName, factHandleIds);
@@ -188,10 +208,9 @@ public class InMemoryJournalStorage implements JournalStorage {
         currentPage.records.add(record);
 
         if (record instanceof SafepointRecord sp) {
-            currentPage.id = String.valueOf(sp.sequenceNo());
             journal.add(currentPage);
             pageById.put(currentPage.id, currentPage);
-            currentPage = new Page();
+            currentPage = new Page(String.valueOf(pageCounter++));
         }
 
         return globalSize() - 1;

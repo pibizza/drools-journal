@@ -31,10 +31,14 @@ public class InMemoryJournalScanner implements JournalScanner {
 
     // NOT thread-safe — designed for single-threaded test use only
     private final List<JournalRecord> records;
+    private final List<String> pageIdsPerRecord;
     private long currentPosition;
 
-    InMemoryJournalScanner(final List<JournalRecord> records, final long fromPosition) {
+    InMemoryJournalScanner(final List<JournalRecord> records,
+                           final List<String> pageIdsPerRecord,
+                           final long fromPosition) {
         this.records = records;
+        this.pageIdsPerRecord = pageIdsPerRecord;
         // clamp to valid range: negative fromPosition starts at the beginning
         this.currentPosition = Math.max(fromPosition, 0);
     }
@@ -57,6 +61,12 @@ public class InMemoryJournalScanner implements JournalScanner {
         // position() returns the index of the record most recently returned by next(),
         // or the starting position if next() has not yet been called
         return currentPosition > 0 ? currentPosition - 1 : currentPosition;
+    }
+
+    @Override
+    public String currentPageId() {
+        int pos = (int) position();
+        return (pos < pageIdsPerRecord.size()) ? pageIdsPerRecord.get(pos) : null;
     }
 
     @Override
