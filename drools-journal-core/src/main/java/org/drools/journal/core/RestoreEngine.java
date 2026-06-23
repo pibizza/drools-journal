@@ -64,20 +64,33 @@ class RestoreEngine {
         // Phase 0: build the live page index from the raw stream.
         // A commit is sealed — and its source pages retired — only when a
         // SafepointRecord follows the CompactionCommitRecord.
+        // Each safepoint interval may span multiple physical pages (size-triggered
+        // rolls); all physical pages in the interval are added when it closes.
         final List<String> pageIndex = new ArrayList<>();
         final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
+        final List<String> currentIntervalPages = new ArrayList<>();
+        String lastPhase0PageId = null;
 
         try (JournalScanner phase0 = journal.scan(0)) {
             while (phase0.hasNext()) {
                 final JournalRecord record = phase0.next();
+                final String pageId = phase0.currentPageId();
+
+                // Track every physical page encountered in the current safepoint interval
+                if (!pageId.equals(lastPhase0PageId)) {
+                    currentIntervalPages.add(pageId);
+                    lastPhase0PageId = pageId;
+                }
+
                 if (record instanceof CompactionCommitRecord commit) {
                     pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
-                } else if (record instanceof SafepointRecord sp) {
-                    for (Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
+                } else if (record instanceof SafepointRecord) {
+                    for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
                         spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
                     }
                     pendingCommits.clear();
-                    pageIndex.add(String.valueOf(sp.sequenceNo()));
+                    pageIndex.addAll(currentIntervalPages);
+                    currentIntervalPages.clear();
                 }
             }
         }
@@ -86,18 +99,32 @@ class RestoreEngine {
         final Set<String> livePageIds = new HashSet<>(pageIndex);
 
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
+        // Flushes occur at physical page boundaries (size-triggered rolls) and at
+        // SafepointRecords (safepoint-triggered rolls).
         final Map<Long, Object> survivingFacts = new HashMap<>();
         final List<RuleMatchRecord> firedMatches = new ArrayList<>();
         final List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
         final Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
+        String lastPhase1PageId = null;
 
         try (JournalScanner scanner = journal.scan(0)) {
             while (scanner.hasNext()) {
                 final JournalRecord record = scanner.next();
+                final String pageId = scanner.currentPageId();
 
-                if (record instanceof SafepointRecord sp) {
-                    if (livePageIds.contains(String.valueOf(sp.sequenceNo()))) {
+                // Physical page boundary (size-triggered roll — no SafepointRecord at edge)
+                if (!pageId.equals(lastPhase1PageId) && lastPhase1PageId != null) {
+                    if (livePageIds.contains(lastPhase1PageId)) {
+                        flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
+                    }
+                    pending.clear();
+                }
+                lastPhase1PageId = pageId;
+
+                if (record instanceof SafepointRecord) {
+                    // Safepoint seals the physical page — flush if live
+                    if (livePageIds.contains(pageId)) {
                         flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
                     }
                     pending.clear();
