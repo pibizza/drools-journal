@@ -34,6 +34,14 @@ public interface JournalScanner extends Iterator<JournalRecord>, AutoCloseable {
     long position();
 
     /**
+     * Returns the ID of the physical page that contains the record most
+     * recently returned by {@link #next()}, or the page at the scan start
+     * position if {@link #next()} has not yet been called. Returns
+     * {@code null} if the journal is empty.
+     */
+    String currentPageId();
+
+    /**
      * Releases any resources held by this scanner.
      */
     @Override
