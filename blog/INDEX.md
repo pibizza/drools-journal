@@ -20,3 +20,4 @@
 | [2026-06-11-PaoloB01-tests-that-couldnt-happen.md](2026-06-11-PaoloB01-tests-that-couldnt-happen.md) | 2026-06-11 | Tests reworked to use sparse pages; Phase 3 (COMMIT) added; crash scenarios |
 | [2026-06-18-PaoloB01-five-classes-one-listener.md](2026-06-18-PaoloB01-five-classes-one-listener.md) | 2026-06-18 | Three PRs, five issues closed: ObjectStorageStrategy symmetric, five infra classes deleted |
 | [2026-06-21-PaoloB01-the-records-go-underground.md](2026-06-21-PaoloB01-the-records-go-underground.md) | 2026-06-21 | Semantic write API replaces append(JournalRecord): insert, insertLogical, retract, ruleMatch |
+| [2026-06-24-PaoloB01-two-notions-of-page.md](2026-06-24-PaoloB01-two-notions-of-page.md) | 2026-06-24 | Physical page IDs decoupled from safepoints; JournalScanner.currentPageId(); ADR-0001 |
