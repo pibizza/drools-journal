@@ -49,6 +49,7 @@
   <properties>
     <java.module.name>org.drools.journal</java.module.name>
     <chronicle-queue.version>2026.4</chronicle-queue.version>
+    <maven.compiler.release>21</maven.compiler.release>
   </properties>
 
   <dependencyManagement>
