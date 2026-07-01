@@ -59,7 +59,8 @@ public final class ChronicleJournalStorage implements JournalStorage {
         this.rollStrategy = rollStrategy;
         this.pageIdCounter = 0;
         this.currentPageId = "0";
-        this.lastWrittenPosition = -1L;
+        final long queueLastIndex = queue.lastIndex();
+        this.lastWrittenPosition = (queueLastIndex == Long.MIN_VALUE) ? -1L : queueLastIndex;
     }
 
     public static ChronicleJournalStorage atPath(final String path) {
