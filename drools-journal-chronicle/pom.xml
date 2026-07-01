@@ -42,7 +42,10 @@
       <groupId>org.drools</groupId>
       <artifactId>drools-journal-core</artifactId>
     </dependency>
-    <!-- TODO: add net.openhft:chronicle-queue once version is decided (Task 16) -->
+    <dependency>
+      <groupId>net.openhft</groupId>
+      <artifactId>chronicle-queue</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>

@@ -48,6 +48,7 @@
 
   <properties>
     <java.module.name>org.drools.journal</java.module.name>
+    <chronicle-queue.version>2026.4</chronicle-queue.version>
   </properties>
 
   <dependencyManagement>
@@ -85,10 +86,11 @@
         <version>${project.version}</version>
       </dependency>
 
-      <!--
-        TODO: add net.openhft:chronicle-queue dependency with version property
-              once the Chronicle Queue OSS version is decided (Task 16)
-      -->
+      <dependency>
+        <groupId>net.openhft</groupId>
+        <artifactId>chronicle-queue</artifactId>
+        <version>${chronicle-queue.version}</version>
+      </dependency>
 
       <!--
         TODO: add io.aeron:aeron-archive and io.aeron:aeron-driver dependencies
