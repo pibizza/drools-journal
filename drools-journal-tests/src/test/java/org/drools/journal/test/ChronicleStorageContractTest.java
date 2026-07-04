@@ -13,30 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.api;
+package org.drools.journal.test;
 
-import java.util.Arrays;
+import java.nio.file.Path;
 
-/**
- * Inline object payload: the serialized bytes of the fact are stored directly
- * in the journal record.
- */
-public record EmbeddedPayload(byte[] bytes) implements Payload {
+import org.drools.journal.chronicle.ChronicleJournalStorage;
+import org.drools.journal.core.JournalStorageContractTest;
+import org.junit.jupiter.api.io.TempDir;
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof EmbeddedPayload other)) return false;
-        return Arrays.equals(bytes, other.bytes);
-    }
+class ChronicleStorageContractTest extends JournalStorageContractTest {
+
+    @TempDir
+    Path tempDir;
 
     @Override
-    public int hashCode() {
-        return Arrays.hashCode(bytes);
-    }
-
-    @Override
-    public String toString() {
-        return "EmbeddedPayload[bytes=" + Arrays.toString(bytes) + "]";
+    protected ChronicleJournalStorage createStorage() {
+        return ChronicleJournalStorage.atPath(tempDir.resolve("journal").toString());
     }
 }
