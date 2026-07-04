@@ -21,7 +21,7 @@ import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.api.ExternalRef;
 import org.drools.journal.api.Payload;
 
-final class PayloadCodec {
+public final class PayloadCodec {
 
     private static final byte TAG_EMBEDDED = 0;
     private static final byte TAG_EXTERNAL = 1;
@@ -29,7 +29,7 @@ final class PayloadCodec {
     private PayloadCodec() {
     }
 
-    static byte[] encode(final Payload payload) {
+    public static byte[] encode(final Payload payload) {
         if (payload instanceof EmbeddedPayload ep) {
             final byte[] bytes = ep.bytes();
             final ByteBuffer buf = ByteBuffer.allocate(1 + bytes.length);
@@ -51,7 +51,7 @@ final class PayloadCodec {
         throw new IllegalArgumentException("Unknown Payload type: " + payload.getClass());
     }
 
-    static Payload decode(final byte[] data) {
+    public static Payload decode(final byte[] data) {
         final ByteBuffer buf = ByteBuffer.wrap(data);
         final byte tag = buf.get();
         if (tag == TAG_EMBEDDED) {
