@@ -21,3 +21,4 @@
 | [2026-06-18-PaoloB01-five-classes-one-listener.md](2026-06-18-PaoloB01-five-classes-one-listener.md) | 2026-06-18 | Three PRs, five issues closed: ObjectStorageStrategy symmetric, five infra classes deleted |
 | [2026-06-21-PaoloB01-the-records-go-underground.md](2026-06-21-PaoloB01-the-records-go-underground.md) | 2026-06-21 | Semantic write API replaces append(JournalRecord): insert, insertLogical, retract, ruleMatch |
 | [2026-06-24-PaoloB01-two-notions-of-page.md](2026-06-24-PaoloB01-two-notions-of-page.md) | 2026-06-24 | Physical page IDs decoupled from safepoints; JournalScanner.currentPageId(); ADR-0001 |
+| [2026-07-05-PaoloB01-chronicle-backend-phase6.md](2026-07-05-PaoloB01-chronicle-backend-phase6.md) | 2026-07-05 | Chronicle backend implemented: storage, scanner, 21 contract tests, 2 e2e tests, PR #30 |
