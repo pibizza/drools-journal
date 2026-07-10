@@ -14,11 +14,14 @@
 | [2026-05-24-PaoloB01-from-spec-to-code.md](2026-05-24-PaoloB01-from-spec-to-code.md) | 2026-05-24 | From Spec to Code |
 | [2026-05-26-PaoloB01-the-restore-completes.md](2026-05-26-PaoloB01-the-restore-completes.md) | 2026-05-26 | The Restore Completes |
 | [2026-05-26-PaoloB02-from-restore-to-compact.md](2026-05-26-PaoloB02-from-restore-to-compact.md) | 2026-05-26 | From Restore to Compact |
-| [2026-05-27-PaoloB01-phase-zero-gets-design.md](2026-05-27-PaoloB01-phase-zero-gets-design.md) | 2026-05-27 | Issue B: test helpers, crash-after-commit protocol fix, Phase 0 implementation |
-| [2026-06-03-PaoloB01-liveness-scan-finds-its-model.md](2026-06-03-PaoloB01-liveness-scan-finds-its-model.md) | 2026-06-03 | Issue C liveness scan: TDD reveals buffer-then-flush page model, isSparse |
-| [2026-06-08-PaoloB01-scan-is-not-the-index.md](2026-06-08-PaoloB01-scan-is-not-the-index.md) | 2026-06-08 | Page index moves to RestoreEngine; scan() stays raw; compact() Phases 1 and 2 |
-| [2026-06-11-PaoloB01-tests-that-couldnt-happen.md](2026-06-11-PaoloB01-tests-that-couldnt-happen.md) | 2026-06-11 | Tests reworked to use sparse pages; Phase 3 (COMMIT) added; crash scenarios |
-| [2026-06-18-PaoloB01-five-classes-one-listener.md](2026-06-18-PaoloB01-five-classes-one-listener.md) | 2026-06-18 | Three PRs, five issues closed: ObjectStorageStrategy symmetric, five infra classes deleted |
-| [2026-06-21-PaoloB01-the-records-go-underground.md](2026-06-21-PaoloB01-the-records-go-underground.md) | 2026-06-21 | Semantic write API replaces append(JournalRecord): insert, insertLogical, retract, ruleMatch |
-| [2026-06-24-PaoloB01-two-notions-of-page.md](2026-06-24-PaoloB01-two-notions-of-page.md) | 2026-06-24 | Physical page IDs decoupled from safepoints; JournalScanner.currentPageId(); ADR-0001 |
-| [2026-07-05-PaoloB01-chronicle-backend-phase6.md](2026-07-05-PaoloB01-chronicle-backend-phase6.md) | 2026-07-05 | Chronicle backend implemented: storage, scanner, 21 contract tests, 2 e2e tests, PR #30 |
+| [2026-05-27-PaoloB01-phase-zero-gets-design.md](2026-05-27-PaoloB01-phase-zero-gets-design.md) | 2026-05-27 | Phase Zero Gets Design |
+| [2026-06-03-PaoloB01-liveness-scan-finds-its-model.md](2026-06-03-PaoloB01-liveness-scan-finds-its-model.md) | 2026-06-03 | The Liveness Scan Finds Its Model |
+| [2026-06-04-PaoloB01-three-records-the-spec-forgot.md](2026-06-04-PaoloB01-three-records-the-spec-forgot.md) | 2026-06-04 | Three Records the Spec Forgot |
+| [2026-06-08-PaoloB01-scan-is-not-the-index.md](2026-06-08-PaoloB01-scan-is-not-the-index.md) | 2026-06-08 | Scan Is Not the Index |
+| [2026-06-11-PaoloB01-tests-that-couldnt-happen.md](2026-06-11-PaoloB01-tests-that-couldnt-happen.md) | 2026-06-11 | Tests That Couldn't Happen |
+| [2026-06-17-PaoloB01-closing-the-coordinator.md](2026-06-17-PaoloB01-closing-the-coordinator.md) | 2026-06-17 | Closing the Coordinator |
+| [2026-06-18-PaoloB01-five-classes-one-listener.md](2026-06-18-PaoloB01-five-classes-one-listener.md) | 2026-06-18 | Five Classes, One Listener |
+| [2026-06-21-PaoloB01-the-records-go-underground.md](2026-06-21-PaoloB01-the-records-go-underground.md) | 2026-06-21 | The Records Go Underground |
+| [2026-06-24-PaoloB01-two-notions-of-page.md](2026-06-24-PaoloB01-two-notions-of-page.md) | 2026-06-24 | Two Notions of Page |
+| [2026-06-24-PaoloB02-designing-chronicle-backend.md](2026-06-24-PaoloB02-designing-chronicle-backend.md) | 2026-06-24 | Designing the Chronicle Backend |
+| [2026-07-05-PaoloB01-chronicle-backend-phase6.md](2026-07-05-PaoloB01-chronicle-backend-phase6.md) | 2026-07-05 | Chronicle Backend — Phase 6 |

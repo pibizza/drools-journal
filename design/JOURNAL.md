@@ -1,0 +1,73 @@
+# Design Journal — epic-compaction-coordinator
+
+### 2026-07-05 · §Storage Backends
+
+`ChronicleJournalStorage` implemented. Logical page IDs are embedded as the
+first argument of every `ChronicleWriteOps` method call and stored verbatim in
+the Chronicle Wire payload — they are entirely independent of Chronicle's own
+file roll cycle (`RollCycle`). Chronicle is used as a flat append log; our page
+concept is purely a data-layer construct. The scanner reads page IDs back via
+`ChronicleRecordHandler`, which implements `ChronicleWriteOps` and captures the
+`pageId` argument on each dispatch.
+
+`ChronicleJournalStorage` carries no internal synchronization — by design,
+identical to the plan's spec. This creates a known concurrency gap: the
+compaction coordinator background thread and the session write thread both write
+to the same `ExcerptAppender`, which Chronicle documents as not thread-safe.
+External coordination (e.g. a `ReentrantLock` shared between session writes and
+the compactor's write phase) is required before the compaction path is wired
+up for the Chronicle backend. Logged as a follow-up; not blocking Phase 6 close
+since `CompactionCoordinator` is not yet integrated with `ChronicleJournalStorage`.
+
+### 2026-07-01 · §Storage Backends
+
+`chronicle-queue 2026.4` (Apache 2.0) added as the OSS dependency for the
+Chronicle backend module. Chronicle migrated from the `5.27ea*` early-access
+series to a year-based release scheme during 2025; `2026.4` is the current
+stable release and retains the same `MethodWriter`/`MethodReader` API surface
+the backend plan was designed against. Version is pinned centrally in the
+parent `dependencyManagement`; the `drools-journal-chronicle` module activates
+it without a version override. This is the opening step of Phase 6.
+
+### 2026-06-17 · §Compaction Protocol (CompactionCoordinator)
+
+`CompactionCoordinator` promoted from static utility to lifecycle-managed class.
+Constructor takes `(JournalStorage, Duration)`; `Duration.ZERO` disables the
+background thread — the safe state for tests that drive `compact()` directly.
+`start()` creates a single daemon thread named `drools-journal-compactor`;
+`stop()` shuts it down with a 5-second grace period before forcing shutdown.
+
+Session wiring: `JournalledSessionFactory.open()` gains a `Duration` overload;
+the existing one-arg overload delegates with `DEFAULT_INTERVAL = 60s`. The
+coordinator is started at open time and stopped in
+`JournalledKieSession.dispose()` — callers are not involved in the
+coordinator's lifecycle.
+
+Task D3 complete. Issue #12 (CompactionCoordinator) fully implemented.
+
+### 2026-05-26 · §Compaction Protocol (CompactionCoordinator)
+
+Safepoint trigger settled: `JournalledKieSession.fireAllRules()` appends a
+`SafepointRecord(sequenceNo++, currentTimeMillis())` after firing completes.
+This is the sole safepoint write point — no timer, no caller-driven API.
+Working memory is fully consistent at that point and it's already the flush
+trigger RestoreEngine relies on.
+
+Page concept settled: a page is the sequence of records between two consecutive
+`SafepointRecord`s. Page ID = `String.valueOf(SafepointRecord.sequenceNo)`.
+No `JournalStorage` SPI changes required — page boundaries fall out of the
+safepoint mechanism for free.
+
+Liveness tracking strategy: periodic full journal rescan (not incremental
+decorator interception). `CompactionCoordinator` rescans on its background
+thread at a configurable interval (default 60 s). No write-path interception;
+the coordinator stays stateless between polls.
+
+`InMemoryJournalStorage` made thread-safe (all methods `synchronized`;
+`scan()` returns `List.copyOf()` snapshot) to support concurrent background
+reads by the compactor.
+
+Issue A (safepoint + thread-safety) complete. End-to-end restore tests added
+to `JournalledKieSessionRestoreTest` — Session 1 inserts/fires, Session 2
+opens on same storage and verifies working memory state and replay suppression.
+
