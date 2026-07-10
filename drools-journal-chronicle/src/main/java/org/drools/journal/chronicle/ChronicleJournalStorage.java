@@ -41,8 +41,7 @@ import org.drools.journal.chronicle.internal.PayloadCodec;
 public final class ChronicleJournalStorage implements JournalStorage {
 
     private final SingleChronicleQueue queue;
-    private final ExcerptAppender appender;
-    private final ChronicleWriteOps writer;
+    private final ChronicleWriteOps sessionWriter;
     private final PageRollStrategy rollStrategy;
     private int pageIdCounter;
     private String currentPageId;
@@ -54,8 +53,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
 
     private ChronicleJournalStorage(final SingleChronicleQueue queue, final PageRollStrategy rollStrategy) {
         this.queue = queue;
-        this.appender = queue.acquireAppender();
-        this.writer = appender.methodWriter(ChronicleWriteOps.class);
+        this.sessionWriter = queue.acquireAppender().methodWriter(ChronicleWriteOps.class);
         this.rollStrategy = rollStrategy;
         this.pageIdCounter = 0;
         this.currentPageId = "0";
@@ -75,8 +73,8 @@ public final class ChronicleJournalStorage implements JournalStorage {
     @Override
     public long insert(final long factHandleId, final Payload payload) {
         final byte[] encoded = PayloadCodec.encode(payload);
-        writer.insert(currentPageId, factHandleId, encoded);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.insert(currentPageId, factHandleId, encoded);
+        lastWrittenPosition = appender().lastIndexAppended();
         maybeRoll(new InsertRecord(factHandleId, false, -1L, payload), encoded.length + 8);
         return lastWrittenPosition;
     }
@@ -84,49 +82,49 @@ public final class ChronicleJournalStorage implements JournalStorage {
     @Override
     public long insertLogical(final long factHandleId, final Payload payload, final long justifyingRuleMatchId) {
         final byte[] encoded = PayloadCodec.encode(payload);
-        writer.insertLogical(currentPageId, factHandleId, encoded, justifyingRuleMatchId);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.insertLogical(currentPageId, factHandleId, encoded, justifyingRuleMatchId);
+        lastWrittenPosition = appender().lastIndexAppended();
         maybeRoll(new InsertRecord(factHandleId, true, justifyingRuleMatchId, payload), encoded.length + 16);
         return lastWrittenPosition;
     }
 
     @Override
     public long retract(final long factHandleId) {
-        writer.retract(currentPageId, factHandleId);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.retract(currentPageId, factHandleId);
+        lastWrittenPosition = appender().lastIndexAppended();
         maybeRoll(new RetractRecord(factHandleId), 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long modify(final long factHandleId, final String lambdaClassRef, final byte[] params) {
-        writer.modify(currentPageId, factHandleId, lambdaClassRef, params);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.modify(currentPageId, factHandleId, lambdaClassRef, params);
+        lastWrittenPosition = appender().lastIndexAppended();
         maybeRoll(new ModifyRecord(factHandleId, lambdaClassRef, params), params.length + 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long ruleMatch(final long id, final String packageName, final String ruleName, final long[] factHandleIds) {
-        writer.ruleMatch(currentPageId, id, packageName, ruleName, factHandleIds);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.ruleMatch(currentPageId, id, packageName, ruleName, factHandleIds);
+        lastWrittenPosition = appender().lastIndexAppended();
         maybeRoll(new RuleMatchRecord(id, packageName, ruleName, factHandleIds), factHandleIds.length * 8 + 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long compactionPrepare(final String preparingPageId, final String[] replacedPageIds) {
-        writer.compactionPrepare(currentPageId, preparingPageId, replacedPageIds);
-        lastWrittenPosition = appender.lastIndexAppended();
-        maybeRoll(new CompactionPrepareRecord(preparingPageId, replacedPageIds), 64);
+        final ChronicleWriteOps w = newWriter();
+        w.compactionPrepare(currentPageId, preparingPageId, replacedPageIds);
+        lastWrittenPosition = appender().lastIndexAppended();
         return lastWrittenPosition;
     }
 
     @Override
     public long compactionCommit(final String mergedPageId, final String[] replacedPageIds) {
-        writer.compactionCommit(currentPageId, mergedPageId, replacedPageIds);
-        lastWrittenPosition = appender.lastIndexAppended();
-        maybeRoll(new CompactionCommitRecord(mergedPageId, replacedPageIds), 64);
+        final ChronicleWriteOps w = newWriter();
+        w.compactionCommit(currentPageId, mergedPageId, replacedPageIds);
+        lastWrittenPosition = appender().lastIndexAppended();
         return lastWrittenPosition;
     }
 
@@ -134,8 +132,8 @@ public final class ChronicleJournalStorage implements JournalStorage {
     public void safepoint() {
         final long seqNo = safepointSequenceNo++;
         final long ts = System.currentTimeMillis();
-        writer.safepoint(currentPageId, seqNo, ts);
-        lastWrittenPosition = appender.lastIndexAppended();
+        sessionWriter.safepoint(currentPageId, seqNo, ts);
+        lastWrittenPosition = appender().lastIndexAppended();
         roll();
     }
 
@@ -151,9 +149,10 @@ public final class ChronicleJournalStorage implements JournalStorage {
 
     @Override
     public void writeMergedPage(final String pageId, final List<JournalRecord> records) {
+        final ChronicleWriteOps w = newWriter();
         for (final JournalRecord record : records) {
-            writeRecord(pageId, record);
-            lastWrittenPosition = appender.lastIndexAppended();
+            writeRecord(w, pageId, record);
+            lastWrittenPosition = appender().lastIndexAppended();
         }
     }
 
@@ -163,6 +162,14 @@ public final class ChronicleJournalStorage implements JournalStorage {
             closed = true;
             queue.close();
         }
+    }
+
+    private ExcerptAppender appender() {
+        return queue.acquireAppender();
+    }
+
+    private ChronicleWriteOps newWriter() {
+        return appender().methodWriter(ChronicleWriteOps.class);
     }
 
     private void maybeRoll(final JournalRecord record, final long estimatedBytes) {
@@ -180,24 +187,24 @@ public final class ChronicleJournalStorage implements JournalStorage {
         currentRecordCount = 0;
     }
 
-    private void writeRecord(final String pageId, final JournalRecord record) {
+    private void writeRecord(final ChronicleWriteOps w, final String pageId, final JournalRecord record) {
         switch (record) {
             case InsertRecord ir when !ir.logical() ->
-                    writer.insert(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()));
+                    w.insert(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()));
             case InsertRecord ir ->
-                    writer.insertLogical(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()), ir.justifyingRuleMatchId());
+                    w.insertLogical(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()), ir.justifyingRuleMatchId());
             case RetractRecord rr ->
-                    writer.retract(pageId, rr.factHandleId());
+                    w.retract(pageId, rr.factHandleId());
             case ModifyRecord mr ->
-                    writer.modify(pageId, mr.factHandleId(), mr.lambdaClassRef(), mr.parameters());
+                    w.modify(pageId, mr.factHandleId(), mr.lambdaClassRef(), mr.parameters());
             case RuleMatchRecord rm ->
-                    writer.ruleMatch(pageId, rm.id(), rm.packageName(), rm.ruleName(), rm.factHandleIds());
+                    w.ruleMatch(pageId, rm.id(), rm.packageName(), rm.ruleName(), rm.factHandleIds());
             case SafepointRecord sr ->
-                    writer.safepoint(pageId, sr.sequenceNo(), sr.timestamp());
+                    w.safepoint(pageId, sr.sequenceNo(), sr.timestamp());
             case CompactionPrepareRecord cp ->
-                    writer.compactionPrepare(pageId, cp.preparingPageId(), cp.replacedPageIds());
+                    w.compactionPrepare(pageId, cp.preparingPageId(), cp.replacedPageIds());
             case CompactionCommitRecord cc ->
-                    writer.compactionCommit(pageId, cc.mergedPageId(), cc.replacedPageIds());
+                    w.compactionCommit(pageId, cc.mergedPageId(), cc.replacedPageIds());
         }
     }
 
