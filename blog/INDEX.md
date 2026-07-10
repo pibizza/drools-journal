@@ -25,3 +25,4 @@
 | [2026-06-24-PaoloB01-two-notions-of-page.md](2026-06-24-PaoloB01-two-notions-of-page.md) | 2026-06-24 | Two Notions of Page |
 | [2026-06-24-PaoloB02-designing-chronicle-backend.md](2026-06-24-PaoloB02-designing-chronicle-backend.md) | 2026-06-24 | Designing the Chronicle Backend |
 | [2026-07-05-PaoloB01-chronicle-backend-phase6.md](2026-07-05-PaoloB01-chronicle-backend-phase6.md) | 2026-07-05 | Chronicle Backend — Phase 6 |
+| [2026-07-10-PaoloB01-review-that-found-a-bug.md](2026-07-10-PaoloB01-review-that-found-a-bug.md) | 2026-07-10 | The Review That Found a Bug |
