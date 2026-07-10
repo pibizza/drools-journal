@@ -137,7 +137,10 @@ class CompactionCoordinator {
             if (r instanceof InsertRecord insert) {
                 liveness.get(pageId)[0]++;
                 liveness.get(pageId)[1]++;
-                factToPage.put(insert.factHandleId(), pageId);
+                String previousPage = factToPage.put(insert.factHandleId(), pageId);
+                if (previousPage != null) {
+                    liveness.get(previousPage)[0]--;
+                }
             } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
                 liveness.get(pageId)[1]++;
             } else if (r instanceof RetractRecord retract) {

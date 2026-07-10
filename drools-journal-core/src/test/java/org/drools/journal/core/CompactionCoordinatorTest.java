@@ -204,6 +204,20 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void scanLiveness_reinsertSameFactOnLaterPage_decrementsOldPageLiveCount() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "original");
+        storage.safepoint(0);              // page "0": [insert(1)]
+        storage.insert(1L, "updated");
+        storage.safepoint(1);              // page "1": [insert(1)] — supersedes page "0"
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness.get("0")[0]).isEqualTo(0L); // old insert is dead
+        assertThat(liveness.get("1")[0]).isEqualTo(1L); // new insert is live
+    }
+
+    @Test
     void stop_whenNeverStarted_isNoOp() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
