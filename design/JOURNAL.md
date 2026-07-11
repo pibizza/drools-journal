@@ -1,5 +1,23 @@
 # Design Journal — epic-compaction-coordinator
 
+### 2026-07-11 · §Storage Backends
+
+Architecture decision: move from single-queue-with-embedded-page-IDs to
+queue-per-page (Chronicle) / recording-per-page (Aeron). Each logical page
+maps to its own Chronicle Queue directory or Aeron recording. A dedicated
+catalog queue tracks page ordering via `PageCreated` and `PageMerged` entries;
+the scanner reads the catalog first to build the live page index, then reads
+data queues in that order. Physical page retirement becomes a first-class
+operation: delete directory (Chronicle) or `purgeRecording()` (Aeron).
+
+Snapshot-and-swap (rewrite entire journal into a fresh queue periodically) was
+considered and rejected: it requires pause-the-world coordination incompatible
+with Aeron's distributed model where remote subscribers replay recordings.
+
+The existing PREPARE/COMMIT compaction protocol is retained — it is inherently
+distributed-safe and maps to both backends. Simplification may follow once the
+Aeron backend validates the design. See ADR-0002.
+
 ### 2026-07-05 · §Storage Backends
 
 `ChronicleJournalStorage` implemented. Logical page IDs are embedded as the
