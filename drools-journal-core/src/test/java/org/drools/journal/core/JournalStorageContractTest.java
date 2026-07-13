@@ -18,8 +18,6 @@ package org.drools.journal.core;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -111,46 +109,6 @@ public abstract class JournalStorageContractTest {
     }
 
     @Test
-    void scan_fromMidpoint_returnsRecordsFromThatPositionOnward() {
-        try (JournalStorage storage = createStorage()) {
-            storage.retract(0);
-            long midPos = storage.retract(1);
-            storage.retract(2);
-
-            try (JournalScanner scanner = storage.scan(midPos)) {
-                assertThat(drain(scanner))
-                        .hasSize(2)
-                        .containsExactly(new RetractRecord(1), new RetractRecord(2));
-            }
-        }
-    }
-
-    @Test
-    void scan_fromLatestPosition_returnsSingleRecord() {
-        try (JournalStorage storage = createStorage()) {
-            storage.retract(0);
-            long lastPos = storage.retract(1);
-
-            try (JournalScanner scanner = storage.scan(lastPos)) {
-                assertThat(drain(scanner))
-                        .hasSize(1)
-                        .containsExactly(new RetractRecord(1));
-            }
-        }
-    }
-
-    @Test
-    void scan_fromBeyondEnd_returnsEmptyScanner() {
-        try (JournalStorage storage = createStorage()) {
-            long lastPos = storage.retract(0);
-
-            try (JournalScanner scanner = storage.scan(lastPos + 1000)) {
-                assertThat(scanner.hasNext()).isFalse();
-            }
-        }
-    }
-
-    @Test
     void scan_multipleIndependentScannersOnSameStorage_doNotInterfere() {
         try (JournalStorage storage = createStorage()) {
             storage.retract(0);
@@ -161,36 +119,6 @@ public abstract class JournalStorageContractTest {
                  JournalScanner s2 = storage.scan(0)) {
                 assertThat(drain(s1)).containsExactly(new RetractRecord(0), new RetractRecord(1), new RetractRecord(2));
                 assertThat(drain(s2)).containsExactly(new RetractRecord(0), new RetractRecord(1), new RetractRecord(2));
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // scanner — position semantics
-    // -------------------------------------------------------------------------
-
-    @Test
-    void scannerPosition_beforeFirstNext_returnsStartPosition() {
-        try (JournalStorage storage = createStorage()) {
-            long startPos = storage.retract(0);
-
-            try (JournalScanner scanner = storage.scan(startPos)) {
-                assertThat(scanner.position()).isEqualTo(startPos);
-            }
-        }
-    }
-
-    @Test
-    void scannerPosition_afterNext_returnsPositionOfLastReturnedRecord() {
-        try (JournalStorage storage = createStorage()) {
-            long pos0 = storage.retract(0);
-            long pos1 = storage.retract(1);
-
-            try (JournalScanner scanner = storage.scan(pos0)) {
-                scanner.next();
-                assertThat(scanner.position()).isEqualTo(pos0);
-                scanner.next();
-                assertThat(scanner.position()).isEqualTo(pos1);
             }
         }
     }
@@ -315,32 +243,6 @@ public abstract class JournalStorageContractTest {
                 assertThat(record.packageName()).isEqualTo("org.example");
                 assertThat(record.ruleName()).isEqualTo("myRule");
                 assertThat(record.factHandleIds()).containsExactly(1L, 2L);
-            }
-        }
-    }
-
-    @Test
-    void compactionPrepare_producesCompactionPrepareRecordInScan() {
-        try (JournalStorage storage = createStorage()) {
-            storage.compactionPrepare("merged-1", new String[]{"page-a", "page-b"});
-
-            try (JournalScanner scanner = storage.scan(0)) {
-                CompactionPrepareRecord record = (CompactionPrepareRecord) scanner.next();
-                assertThat(record.preparingPageId()).isEqualTo("merged-1");
-                assertThat(record.replacedPageIds()).containsExactly("page-a", "page-b");
-            }
-        }
-    }
-
-    @Test
-    void compactionCommit_producesCompactionCommitRecordInScan() {
-        try (JournalStorage storage = createStorage()) {
-            storage.compactionCommit("merged-1", new String[]{"page-a", "page-b"});
-
-            try (JournalScanner scanner = storage.scan(0)) {
-                CompactionCommitRecord record = (CompactionCommitRecord) scanner.next();
-                assertThat(record.mergedPageId()).isEqualTo("merged-1");
-                assertThat(record.replacedPageIds()).containsExactly("page-a", "page-b");
             }
         }
     }

@@ -142,6 +142,12 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
 
     @Override
+    public synchronized boolean isEmpty() {
+        checkOpen();
+        return globalSize() == 0;
+    }
+
+    @Override
     public synchronized long latestPosition() {
         checkOpen();
         return globalSize() - 1;
