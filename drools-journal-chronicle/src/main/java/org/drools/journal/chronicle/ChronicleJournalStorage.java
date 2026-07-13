@@ -15,6 +15,7 @@
  */
 package org.drools.journal.chronicle;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import net.openhft.chronicle.queue.ExcerptAppender;
@@ -35,14 +36,19 @@ import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RollDecision;
 import org.drools.journal.api.RuleMatchRecord;
 import org.drools.journal.api.SafepointRecord;
-import org.drools.journal.chronicle.internal.ChronicleWriteOps;
+import org.drools.journal.chronicle.internal.CatalogIndex;
+import org.drools.journal.chronicle.internal.ChronicleCatalogWriteOps;
+import org.drools.journal.chronicle.internal.ChronicleDataWriteOps;
 import org.drools.journal.chronicle.internal.PayloadCodec;
 
 public final class ChronicleJournalStorage implements JournalStorage {
 
-    private final SingleChronicleQueue queue;
-    private final ChronicleWriteOps sessionWriter;
+    private final Path rootDir;
+    private final SingleChronicleQueue catalogQueue;
+    private final ChronicleCatalogWriteOps catalogWriter;
     private final PageRollStrategy rollStrategy;
+    private SingleChronicleQueue activePageQueue;
+    private ChronicleDataWriteOps sessionWriter;
     private int pageIdCounter;
     private String currentPageId;
     private long lastWrittenPosition;
@@ -51,14 +57,24 @@ public final class ChronicleJournalStorage implements JournalStorage {
     private long currentRecordCount;
     private boolean closed;
 
-    private ChronicleJournalStorage(final SingleChronicleQueue queue, final PageRollStrategy rollStrategy) {
-        this.queue = queue;
-        this.sessionWriter = queue.acquireAppender().methodWriter(ChronicleWriteOps.class);
+    private ChronicleJournalStorage(final Path rootDir,
+                                    final SingleChronicleQueue catalogQueue,
+                                    final ChronicleCatalogWriteOps catalogWriter,
+                                    final SingleChronicleQueue activePageQueue,
+                                    final ChronicleDataWriteOps sessionWriter,
+                                    final PageRollStrategy rollStrategy,
+                                    final int pageIdCounter,
+                                    final String currentPageId,
+                                    final long lastWrittenPosition) {
+        this.rootDir = rootDir;
+        this.catalogQueue = catalogQueue;
+        this.catalogWriter = catalogWriter;
+        this.activePageQueue = activePageQueue;
+        this.sessionWriter = sessionWriter;
         this.rollStrategy = rollStrategy;
-        this.pageIdCounter = 0;
-        this.currentPageId = "0";
-        final long queueLastIndex = queue.lastIndex();
-        this.lastWrittenPosition = (queueLastIndex == Long.MIN_VALUE) ? -1L : queueLastIndex;
+        this.pageIdCounter = pageIdCounter;
+        this.currentPageId = currentPageId;
+        this.lastWrittenPosition = lastWrittenPosition;
     }
 
     public static ChronicleJournalStorage atPath(final String path) {
@@ -66,80 +82,107 @@ public final class ChronicleJournalStorage implements JournalStorage {
     }
 
     public static ChronicleJournalStorage atPath(final String path, final PageRollStrategy rollStrategy) {
-        final SingleChronicleQueue queue = SingleChronicleQueueBuilder.binary(path).build();
-        return new ChronicleJournalStorage(queue, rollStrategy);
+        Path rootDir = Path.of(path);
+        SingleChronicleQueue catalogQueue = openQueue(rootDir.resolve("catalog"));
+        CatalogIndex index = CatalogIndex.build(catalogQueue);
+
+        if (index.livePages().isEmpty()) {
+            return createFresh(rootDir, catalogQueue, rollStrategy);
+        }
+        return reopenExisting(rootDir, catalogQueue, index, rollStrategy);
+    }
+
+    private static ChronicleJournalStorage createFresh(final Path rootDir,
+                                                       final SingleChronicleQueue catalogQueue,
+                                                       final PageRollStrategy rollStrategy) {
+        ChronicleCatalogWriteOps catalogWriter = newCatalogWriter(catalogQueue);
+        SingleChronicleQueue pageQueue = openQueue(pageDir(rootDir, "0"));
+        catalogWriter.pageCreated("0");
+        return new ChronicleJournalStorage(rootDir, catalogQueue, catalogWriter,
+                pageQueue, newDataWriter(pageQueue), rollStrategy, 0, "0", -1L);
+    }
+
+    private static ChronicleJournalStorage reopenExisting(final Path rootDir,
+                                                          final SingleChronicleQueue catalogQueue,
+                                                          final CatalogIndex index,
+                                                          final PageRollStrategy rollStrategy) {
+        ChronicleCatalogWriteOps catalogWriter = newCatalogWriter(catalogQueue);
+        List<String> livePages = index.livePages();
+        String activePageId = livePages.get(livePages.size() - 1);
+        SingleChronicleQueue pageQueue = openQueue(pageDir(rootDir, activePageId));
+        long queueLastIndex = pageQueue.lastIndex();
+        long lastPos = (queueLastIndex == Long.MIN_VALUE) ? -1L : queueLastIndex;
+        return new ChronicleJournalStorage(rootDir, catalogQueue, catalogWriter,
+                pageQueue, newDataWriter(pageQueue), rollStrategy,
+                index.highestPageCounter(), activePageId, lastPos);
     }
 
     @Override
     public long insert(final long factHandleId, final Payload payload) {
-        final byte[] encoded = PayloadCodec.encode(payload);
-        sessionWriter.insert(currentPageId, factHandleId, encoded);
-        lastWrittenPosition = appender().lastIndexAppended();
+        byte[] encoded = PayloadCodec.encode(payload);
+        sessionWriter.insert(factHandleId, encoded);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         maybeRoll(new InsertRecord(factHandleId, false, -1L, payload), encoded.length + 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long insertLogical(final long factHandleId, final Payload payload, final long justifyingRuleMatchId) {
-        final byte[] encoded = PayloadCodec.encode(payload);
-        sessionWriter.insertLogical(currentPageId, factHandleId, encoded, justifyingRuleMatchId);
-        lastWrittenPosition = appender().lastIndexAppended();
+        byte[] encoded = PayloadCodec.encode(payload);
+        sessionWriter.insertLogical(factHandleId, encoded, justifyingRuleMatchId);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         maybeRoll(new InsertRecord(factHandleId, true, justifyingRuleMatchId, payload), encoded.length + 16);
         return lastWrittenPosition;
     }
 
     @Override
     public long retract(final long factHandleId) {
-        sessionWriter.retract(currentPageId, factHandleId);
-        lastWrittenPosition = appender().lastIndexAppended();
+        sessionWriter.retract(factHandleId);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         maybeRoll(new RetractRecord(factHandleId), 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long modify(final long factHandleId, final String lambdaClassRef, final byte[] params) {
-        sessionWriter.modify(currentPageId, factHandleId, lambdaClassRef, params);
-        lastWrittenPosition = appender().lastIndexAppended();
+        sessionWriter.modify(factHandleId, lambdaClassRef, params);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         maybeRoll(new ModifyRecord(factHandleId, lambdaClassRef, params), params.length + 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long ruleMatch(final long id, final String packageName, final String ruleName, final long[] factHandleIds) {
-        sessionWriter.ruleMatch(currentPageId, id, packageName, ruleName, factHandleIds);
-        lastWrittenPosition = appender().lastIndexAppended();
+        sessionWriter.ruleMatch(id, packageName, ruleName, factHandleIds);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         maybeRoll(new RuleMatchRecord(id, packageName, ruleName, factHandleIds), factHandleIds.length * 8 + 8);
         return lastWrittenPosition;
     }
 
     @Override
     public long compactionPrepare(final String preparingPageId, final String[] replacedPageIds) {
-        final ChronicleWriteOps w = newWriter();
-        w.compactionPrepare(currentPageId, preparingPageId, replacedPageIds);
-        lastWrittenPosition = appender().lastIndexAppended();
-        return lastWrittenPosition;
+        catalogWriter.compactionPrepare(preparingPageId, replacedPageIds);
+        return catalogAppender().lastIndexAppended();
     }
 
     @Override
     public long compactionCommit(final String mergedPageId, final String[] replacedPageIds) {
-        final ChronicleWriteOps w = newWriter();
-        w.compactionCommit(currentPageId, mergedPageId, replacedPageIds);
-        lastWrittenPosition = appender().lastIndexAppended();
-        return lastWrittenPosition;
+        catalogWriter.compactionCommit(mergedPageId, replacedPageIds);
+        return catalogAppender().lastIndexAppended();
     }
 
     @Override
     public void safepoint() {
-        final long seqNo = safepointSequenceNo++;
-        final long ts = System.currentTimeMillis();
-        sessionWriter.safepoint(currentPageId, seqNo, ts);
-        lastWrittenPosition = appender().lastIndexAppended();
+        long seqNo = safepointSequenceNo++;
+        long ts = System.currentTimeMillis();
+        sessionWriter.safepoint(seqNo, ts);
+        lastWrittenPosition = activeAppender().lastIndexAppended();
         roll();
     }
 
     @Override
     public JournalScanner scan(final long fromPosition) {
-        return new ChronicleJournalScanner(queue.createTailer(), fromPosition);
+        return MultiQueueScanner.create(rootDir, catalogQueue);
     }
 
     @Override
@@ -149,10 +192,11 @@ public final class ChronicleJournalStorage implements JournalStorage {
 
     @Override
     public void writeMergedPage(final String pageId, final List<JournalRecord> records) {
-        final ChronicleWriteOps w = newWriter();
-        for (final JournalRecord record : records) {
-            writeRecord(w, pageId, record);
-            lastWrittenPosition = appender().lastIndexAppended();
+        try (SingleChronicleQueue mergedQueue = openQueue(pageDir(rootDir, pageId))) {
+            ChronicleDataWriteOps w = newDataWriter(mergedQueue);
+            for (JournalRecord record : records) {
+                writeRecord(w, record);
+            }
         }
     }
 
@@ -160,51 +204,72 @@ public final class ChronicleJournalStorage implements JournalStorage {
     public void close() {
         if (!closed) {
             closed = true;
-            queue.close();
+            activePageQueue.close();
+            catalogQueue.close();
         }
     }
 
-    private ExcerptAppender appender() {
-        return queue.acquireAppender();
+    private ExcerptAppender activeAppender() {
+        return activePageQueue.acquireAppender();
     }
 
-    private ChronicleWriteOps newWriter() {
-        return appender().methodWriter(ChronicleWriteOps.class);
+    private ExcerptAppender catalogAppender() {
+        return catalogQueue.acquireAppender();
     }
 
     private void maybeRoll(final JournalRecord record, final long estimatedBytes) {
         currentPageBytes += estimatedBytes;
         currentRecordCount++;
-        final PageContext ctx = new PageContextSnapshot(record, currentPageBytes, currentRecordCount);
+        PageContext ctx = new PageContextSnapshot(record, currentPageBytes, currentRecordCount);
         if (rollStrategy.decide(ctx) == RollDecision.ROLL) {
             roll();
         }
     }
 
     private void roll() {
+        activePageQueue.close();
         currentPageId = String.valueOf(++pageIdCounter);
         currentPageBytes = 0;
         currentRecordCount = 0;
+        activePageQueue = openQueue(pageDir(rootDir, currentPageId));
+        sessionWriter = newDataWriter(activePageQueue);
+        catalogWriter.pageCreated(currentPageId);
     }
 
-    private void writeRecord(final ChronicleWriteOps w, final String pageId, final JournalRecord record) {
+    private static Path pageDir(final Path rootDir, final String pageId) {
+        return rootDir.resolve("page-" + pageId);
+    }
+
+    private static ChronicleCatalogWriteOps newCatalogWriter(final SingleChronicleQueue catalogQueue) {
+        return catalogQueue.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
+    }
+
+    private static SingleChronicleQueue openQueue(final Path path) {
+        return SingleChronicleQueueBuilder.binary(path).build();
+    }
+
+    private static ChronicleDataWriteOps newDataWriter(final SingleChronicleQueue queue) {
+        return queue.acquireAppender().methodWriter(ChronicleDataWriteOps.class);
+    }
+
+    private static void writeRecord(final ChronicleDataWriteOps w, final JournalRecord record) {
         switch (record) {
             case InsertRecord ir when !ir.logical() ->
-                    w.insert(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()));
+                    w.insert(ir.factHandleId(), PayloadCodec.encode(ir.payload()));
             case InsertRecord ir ->
-                    w.insertLogical(pageId, ir.factHandleId(), PayloadCodec.encode(ir.payload()), ir.justifyingRuleMatchId());
+                    w.insertLogical(ir.factHandleId(), PayloadCodec.encode(ir.payload()), ir.justifyingRuleMatchId());
             case RetractRecord rr ->
-                    w.retract(pageId, rr.factHandleId());
+                    w.retract(rr.factHandleId());
             case ModifyRecord mr ->
-                    w.modify(pageId, mr.factHandleId(), mr.lambdaClassRef(), mr.parameters());
+                    w.modify(mr.factHandleId(), mr.lambdaClassRef(), mr.parameters());
             case RuleMatchRecord rm ->
-                    w.ruleMatch(pageId, rm.id(), rm.packageName(), rm.ruleName(), rm.factHandleIds());
+                    w.ruleMatch(rm.id(), rm.packageName(), rm.ruleName(), rm.factHandleIds());
             case SafepointRecord sr ->
-                    w.safepoint(pageId, sr.sequenceNo(), sr.timestamp());
-            case CompactionPrepareRecord cp ->
-                    w.compactionPrepare(pageId, cp.preparingPageId(), cp.replacedPageIds());
-            case CompactionCommitRecord cc ->
-                    w.compactionCommit(pageId, cc.mergedPageId(), cc.replacedPageIds());
+                    w.safepoint(sr.sequenceNo(), sr.timestamp());
+            case CompactionPrepareRecord ignored ->
+                    throw new IllegalArgumentException("CompactionPrepareRecord belongs in the catalog, not data pages");
+            case CompactionCommitRecord ignored ->
+                    throw new IllegalArgumentException("CompactionCommitRecord belongs in the catalog, not data pages");
         }
     }
 
