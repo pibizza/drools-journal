@@ -70,22 +70,20 @@ public final class CatalogIndex implements ChronicleCatalogWriteOps {
     }
 
     static List<String> spliceIntoIndex(final List<String> pageIndex, final String mergedId, final String... replacedIds) {
-        List<String> result = new ArrayList<>(pageIndex);
-        int splicePos = -1;
-        for (String replaced : replacedIds) {
-            int pos = result.indexOf(replaced);
-            if (pos >= 0) {
-                if (splicePos < 0 || pos < splicePos) {
-                    splicePos = pos;
-                }
-                result.remove(pos);
-                if (splicePos > pos) {
-                    splicePos--;
-                }
-            }
+        if (replacedIds.length == 0) {
+            return new ArrayList<>(pageIndex);
         }
-        if (splicePos >= 0) {
-            result.add(splicePos, mergedId);
+        List<String> result = new ArrayList<>(pageIndex);
+        int r = replacedIds.length - 1;
+        for (int i = result.size() - 1; i >= 0 && r >= 0; i--) {
+            if (result.get(i).equals(replacedIds[r])) {
+                if (r == 0) {
+                    result.set(i, mergedId);
+                } else {
+                    result.remove(i);
+                }
+                r--;
+            }
         }
         return result;
     }
