@@ -28,14 +28,10 @@ public final class CatalogIndex implements ChronicleCatalogWriteOps {
     private int highestPageCounter;
 
     @Override
-    public void pageCreated(final String pageId) {
-        pages.add(pageId);
-        try {
-            int n = Integer.parseInt(pageId);
-            if (n > highestPageCounter) {
-                highestPageCounter = n;
-            }
-        } catch (NumberFormatException ignored) {
+    public void pageCreated(final int pageId) {
+        pages.add(String.valueOf(pageId));
+        if (pageId > highestPageCounter) {
+            highestPageCounter = pageId;
         }
     }
 

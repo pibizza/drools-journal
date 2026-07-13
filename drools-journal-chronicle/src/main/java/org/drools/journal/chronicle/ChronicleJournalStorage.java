@@ -100,7 +100,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
                                                        final PageRollStrategy rollStrategy) {
         ChronicleCatalogWriteOps catalogWriter = newCatalogWriter(catalogQueue);
         SingleChronicleQueue pageQueue = openQueue(pageDir(rootDir, "0"));
-        catalogWriter.pageCreated("0");
+        catalogWriter.pageCreated(0);
         return new ChronicleJournalStorage(rootDir, catalogQueue, catalogWriter,
                 pageQueue, newDataWriter(pageQueue), rollStrategy, 0, "0", -1L, true);
     }
@@ -237,12 +237,13 @@ public final class ChronicleJournalStorage implements JournalStorage {
 
     private void roll() {
         activePageQueue.close();
-        currentPageId = String.valueOf(++pageIdCounter);
+        ++pageIdCounter;
+        currentPageId = String.valueOf(pageIdCounter);
         currentPageBytes = 0;
         currentRecordCount = 0;
         activePageQueue = openQueue(pageDir(rootDir, currentPageId));
         sessionWriter = newDataWriter(activePageQueue);
-        catalogWriter.pageCreated(currentPageId);
+        catalogWriter.pageCreated(pageIdCounter);
     }
 
     private static Path pageDir(final Path rootDir, final String pageId) {

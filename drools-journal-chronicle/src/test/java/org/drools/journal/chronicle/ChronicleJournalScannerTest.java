@@ -44,8 +44,8 @@ class MultiQueueScannerTest {
 
         try (SingleChronicleQueue catalog = openQueue(root.resolve("catalog"))) {
             ChronicleCatalogWriteOps catWriter = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            catWriter.pageCreated("0");
-            catWriter.pageCreated("1");
+            catWriter.pageCreated(0);
+            catWriter.pageCreated(1);
 
             try (SingleChronicleQueue p0 = openQueue(root.resolve("page-0"))) {
                 ChronicleDataWriteOps w = p0.acquireAppender().methodWriter(ChronicleDataWriteOps.class);
@@ -87,8 +87,8 @@ class MultiQueueScannerTest {
 
         try (SingleChronicleQueue catalog = openQueue(root.resolve("catalog"))) {
             ChronicleCatalogWriteOps catWriter = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            catWriter.pageCreated("0");
-            catWriter.pageCreated("1");
+            catWriter.pageCreated(0);
+            catWriter.pageCreated(1);
 
             try (SingleChronicleQueue p0 = openQueue(root.resolve("page-0"))) {
                 // empty — no records
@@ -113,9 +113,9 @@ class MultiQueueScannerTest {
 
         try (SingleChronicleQueue catalog = openQueue(root.resolve("catalog"))) {
             ChronicleCatalogWriteOps catWriter = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            catWriter.pageCreated("0");
-            catWriter.pageCreated("1");
-            catWriter.pageCreated("2");
+            catWriter.pageCreated(0);
+            catWriter.pageCreated(1);
+            catWriter.pageCreated(2);
             catWriter.compactionCommit("m-1", "0", "1");
 
             // old pages still on disk (retirement deferred)
@@ -165,8 +165,8 @@ class MultiQueueScannerTest {
 
         try (SingleChronicleQueue catalog = openQueue(root.resolve("catalog"))) {
             ChronicleCatalogWriteOps catWriter = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            catWriter.pageCreated("0");
-            catWriter.pageCreated("1");
+            catWriter.pageCreated(0);
+            catWriter.pageCreated(1);
 
             // only create page-1, page-0 directory does not exist
             try (SingleChronicleQueue p1 = openQueue(root.resolve("page-1"))) {

@@ -33,9 +33,9 @@ class CatalogIndexTest {
     void pagesOnly_returnsAllInOrder() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
-            writer.pageCreated("2");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
+            writer.pageCreated(2);
 
             CatalogIndex index = CatalogIndex.build(catalog);
             assertThat(index.livePages()).containsExactly("0", "1", "2");
@@ -47,9 +47,9 @@ class CatalogIndexTest {
     void compactionCommit_splicesReplacedPages() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
-            writer.pageCreated("2");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
+            writer.pageCreated(2);
             writer.compactionPrepare("m-1", "0", "1");
             writer.compactionCommit("m-1", "0", "1");
 
@@ -63,8 +63,8 @@ class CatalogIndexTest {
     void prepareWithoutCommit_leavesOriginalPages() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
             writer.compactionPrepare("m-1", "0", "1");
 
             CatalogIndex index = CatalogIndex.build(catalog);
@@ -76,10 +76,10 @@ class CatalogIndexTest {
     void twoRoundsOfCompaction_resolveCorrectly() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
-            writer.pageCreated("2");
-            writer.pageCreated("3");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
+            writer.pageCreated(2);
+            writer.pageCreated(3);
             writer.compactionCommit("m-1", "0", "1");
             writer.compactionCommit("m-2", "m-1", "2");
 
@@ -92,10 +92,10 @@ class CatalogIndexTest {
     void nonAdjacentMerge_splicesAtFirstReplacedPosition() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
-            writer.pageCreated("2");
-            writer.pageCreated("3");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
+            writer.pageCreated(2);
+            writer.pageCreated(3);
             writer.compactionCommit("m-1", "0", "2");
 
             CatalogIndex index = CatalogIndex.build(catalog);
@@ -107,10 +107,10 @@ class CatalogIndexTest {
     void pageCreatedAfterCompaction_appendsAtEnd() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
-            writer.pageCreated("1");
+            writer.pageCreated(0);
+            writer.pageCreated(1);
             writer.compactionCommit("m-1", "0", "1");
-            writer.pageCreated("2");
+            writer.pageCreated(2);
 
             CatalogIndex index = CatalogIndex.build(catalog);
             assertThat(index.livePages()).containsExactly("m-1", "2");
@@ -122,7 +122,7 @@ class CatalogIndexTest {
     void singlePage_returnsSingletonList() {
         try (SingleChronicleQueue catalog = SingleChronicleQueueBuilder.binary(tempDir.resolve("catalog")).build()) {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
-            writer.pageCreated("0");
+            writer.pageCreated(0);
 
             CatalogIndex index = CatalogIndex.build(catalog);
             assertThat(index.livePages()).containsExactly("0");
