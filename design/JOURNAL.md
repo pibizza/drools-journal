@@ -1,5 +1,29 @@
 # Design Journal — epic-compaction-coordinator
 
+### 2026-07-13 · §Storage Backends
+
+Queue-per-page architecture implemented for Chronicle (#42). Each logical
+page maps to its own Chronicle Queue directory (`page-{id}/`); a catalog
+queue (`catalog/`) tracks page ordering via `pageCreated(int)` and
+compaction metadata (`CompactionPrepareRecord`, `CompactionCommitRecord`).
+The scanner reads the catalog first to build the live page list via
+`CatalogIndex`, then chains through data queues sequentially.
+
+Implementation confirmed the crash analysis from ADR-0002: catalog entries
+are self-sealing — no safepoint correlation needed across streams. The
+PREPARE/COMMIT protocol works unchanged; compaction metadata is simply
+redirected from the data stream to the catalog.
+
+SPI change: added `JournalStorage.isEmpty()`. The previous
+`latestPosition() >= 0` check was incorrect for multi-queue — when the
+active page queue is empty on reopen (safepoint triggered a roll), it
+returned -1 even though earlier pages contain data.
+
+Contract tests for mid-stream resume (`scan(fromPosition)` with non-zero
+position) and compaction-records-in-scan were removed — no real backend
+supports these. Mid-stream resume via cumulative record index is parked
+as an idea for future implementation if needed.
+
 ### 2026-07-11 · §Storage Backends
 
 Architecture decision: move from single-queue-with-embedded-page-IDs to
