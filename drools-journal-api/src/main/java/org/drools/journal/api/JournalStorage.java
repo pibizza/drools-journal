@@ -132,6 +132,11 @@ public interface JournalStorage extends AutoCloseable {
     JournalScanner scan(long fromPosition);
 
     /**
+     * Returns {@code true} if no data records have been written to this journal.
+     */
+    boolean isEmpty();
+
+    /**
      * Returns the position of the most recently written record, or {@code -1}
      * if the journal is empty.
      */

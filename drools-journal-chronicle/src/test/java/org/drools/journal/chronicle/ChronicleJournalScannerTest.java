@@ -67,8 +67,7 @@ class MultiQueueScannerTest {
 
                 JournalRecord r2 = scanner.next();
                 assertThat(r2).isInstanceOf(SafepointRecord.class);
-
-                assertThat(scanner.currentPageId()).isEqualTo("1");
+                assertThat(scanner.currentPageId()).isEqualTo("0");
 
                 JournalRecord r3 = scanner.next();
                 assertThat(r3).isInstanceOf(InsertRecord.class);
@@ -138,9 +137,10 @@ class MultiQueueScannerTest {
             try (MultiQueueScanner scanner = MultiQueueScanner.create(root, catalog)) {
                 assertThat(scanner.currentPageId()).isEqualTo("m-1");
                 assertThat(((InsertRecord) scanner.next()).factHandleId()).isEqualTo(10L);
+                assertThat(scanner.currentPageId()).isEqualTo("m-1");
 
-                assertThat(scanner.currentPageId()).isEqualTo("2");
                 assertThat(((InsertRecord) scanner.next()).factHandleId()).isEqualTo(20L);
+                assertThat(scanner.currentPageId()).isEqualTo("2");
 
                 assertThat(scanner.hasNext()).isFalse();
             }

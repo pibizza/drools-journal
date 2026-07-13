@@ -33,6 +33,7 @@ final class MultiQueueScanner implements JournalScanner {
     private final ChronicleDataRecordHandler handler;
     private int currentPageListIndex;
     private String currentPageId;
+    private String bufferedPageId;
     private SingleChronicleQueue currentQueue;
     private MethodReader currentReader;
     private JournalRecord buffered;
@@ -50,6 +51,7 @@ final class MultiQueueScanner implements JournalScanner {
         List<String> livePages = CatalogIndex.build(catalogQueue).livePages();
         MultiQueueScanner scanner = new MultiQueueScanner(rootDir, new ChronicleDataRecordHandler(), livePages);
         scanner.openNextNonEmptyQueue();
+        scanner.currentPageId = scanner.bufferedPageId;
         return scanner;
     }
 
@@ -61,6 +63,7 @@ final class MultiQueueScanner implements JournalScanner {
     @Override
     public JournalRecord next() {
         JournalRecord result = buffered;
+        currentPageId = bufferedPageId;
         syntheticPosition++;
         advance();
         return result;
@@ -96,9 +99,10 @@ final class MultiQueueScanner implements JournalScanner {
 
     private void openNextNonEmptyQueue() {
         buffered = null;
+        bufferedPageId = null;
         while (++currentPageListIndex < livePages.size()) {
-            currentPageId = livePages.get(currentPageListIndex);
-            Path queuePath = rootDir.resolve("page-" + currentPageId);
+            String pageId = livePages.get(currentPageListIndex);
+            Path queuePath = rootDir.resolve("page-" + pageId);
             if (!queuePath.toFile().exists()) {
                 continue;
             }
@@ -109,11 +113,11 @@ final class MultiQueueScanner implements JournalScanner {
             handler.reset();
             if (currentReader.readOne()) {
                 buffered = handler.pending();
+                bufferedPageId = pageId;
                 return;
             }
             closeCurrentQueue();
         }
-        currentPageId = livePages.isEmpty() ? null : currentPageId;
     }
 
     private void closeCurrentQueue() {

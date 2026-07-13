@@ -87,10 +87,11 @@ class ChronicleJournalStorageTest {
                 scanner.next(); // insert
                 assertThat(scanner.currentPageId()).isEqualTo("0");
                 scanner.next(); // safepoint
-                assertThat(scanner.currentPageId()).isEqualTo("1");
+                assertThat(scanner.currentPageId()).isEqualTo("0");
                 scanner.next(); // insert
                 assertThat(scanner.currentPageId()).isEqualTo("1");
                 scanner.next(); // safepoint
+                assertThat(scanner.currentPageId()).isEqualTo("1");
                 assertThat(scanner.hasNext()).isFalse();
             }
         }

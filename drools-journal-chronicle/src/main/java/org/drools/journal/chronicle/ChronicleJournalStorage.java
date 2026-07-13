@@ -55,6 +55,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
     private long safepointSequenceNo;
     private long currentPageBytes;
     private long currentRecordCount;
+    private boolean empty;
     private boolean closed;
 
     private ChronicleJournalStorage(final Path rootDir,
@@ -65,7 +66,8 @@ public final class ChronicleJournalStorage implements JournalStorage {
                                     final PageRollStrategy rollStrategy,
                                     final int pageIdCounter,
                                     final String currentPageId,
-                                    final long lastWrittenPosition) {
+                                    final long lastWrittenPosition,
+                                    final boolean empty) {
         this.rootDir = rootDir;
         this.catalogQueue = catalogQueue;
         this.catalogWriter = catalogWriter;
@@ -75,6 +77,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
         this.pageIdCounter = pageIdCounter;
         this.currentPageId = currentPageId;
         this.lastWrittenPosition = lastWrittenPosition;
+        this.empty = empty;
     }
 
     public static ChronicleJournalStorage atPath(final String path) {
@@ -99,7 +102,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
         SingleChronicleQueue pageQueue = openQueue(pageDir(rootDir, "0"));
         catalogWriter.pageCreated("0");
         return new ChronicleJournalStorage(rootDir, catalogQueue, catalogWriter,
-                pageQueue, newDataWriter(pageQueue), rollStrategy, 0, "0", -1L);
+                pageQueue, newDataWriter(pageQueue), rollStrategy, 0, "0", -1L, true);
     }
 
     private static ChronicleJournalStorage reopenExisting(final Path rootDir,
@@ -114,11 +117,12 @@ public final class ChronicleJournalStorage implements JournalStorage {
         long lastPos = (queueLastIndex == Long.MIN_VALUE) ? -1L : queueLastIndex;
         return new ChronicleJournalStorage(rootDir, catalogQueue, catalogWriter,
                 pageQueue, newDataWriter(pageQueue), rollStrategy,
-                index.highestPageCounter(), activePageId, lastPos);
+                index.highestPageCounter(), activePageId, lastPos, false);
     }
 
     @Override
     public long insert(final long factHandleId, final Payload payload) {
+        empty = false;
         byte[] encoded = PayloadCodec.encode(payload);
         sessionWriter.insert(factHandleId, encoded);
         lastWrittenPosition = activeAppender().lastIndexAppended();
@@ -183,6 +187,11 @@ public final class ChronicleJournalStorage implements JournalStorage {
     @Override
     public JournalScanner scan(final long fromPosition) {
         return MultiQueueScanner.create(rootDir, catalogQueue);
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return empty;
     }
 
     @Override

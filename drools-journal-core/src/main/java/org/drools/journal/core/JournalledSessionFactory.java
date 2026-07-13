@@ -51,7 +51,7 @@ public final class JournalledSessionFactory {
         Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
         JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
-        if (storage.latestPosition() >= 0) {
+        if (!storage.isEmpty()) {
             restore(session, storage);
         }
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(storage, new EmbedStrategy());
