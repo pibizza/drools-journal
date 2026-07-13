@@ -17,6 +17,6 @@ package org.drools.journal.chronicle.internal;
 
 public interface ChronicleCatalogWriteOps {
     void pageCreated(String pageId);
-    void compactionPrepare(String preparingPageId, String[] replacedPageIds);
-    void compactionCommit(String mergedPageId, String[] replacedPageIds);
+    void compactionPrepare(String preparingPageId, String... replacedPageIds);
+    void compactionCommit(String mergedPageId, String... replacedPageIds);
 }
