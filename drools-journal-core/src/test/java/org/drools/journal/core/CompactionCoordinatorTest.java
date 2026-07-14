@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -223,5 +224,112 @@ class CompactionCoordinatorTest {
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
 
         coordinator.stop(); // must not throw
+    }
+
+    @Test
+    void scanLiveness_afterSealedCompaction_excludesRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.insert(2L, "b");
+        storage.insert(3L, "c");
+        storage.insert(4L, "d");
+        storage.safepoint(0);            // page "0": 4 inserts
+        storage.retract(2L);
+        storage.retract(3L);
+        storage.retract(4L);
+        storage.safepoint(1);            // page "1": 3 retracts
+
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        storage.safepoint(2);            // seals the COMMIT — pages "0" and "1" are retired
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness).doesNotContainKey("0");
+        assertThat(liveness).doesNotContainKey("1");
+    }
+
+    @Test
+    void scanLiveness_afterSealedCompaction_includesMergedPage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.insert(2L, "b");
+        storage.insert(3L, "c");
+        storage.insert(4L, "d");
+        storage.safepoint(0);
+        storage.retract(2L);
+        storage.retract(3L);
+        storage.retract(4L);
+        storage.safepoint(1);
+
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        storage.safepoint(2);
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        // The merged page should be present and contain the one surviving fact
+        assertThat(liveness).hasSize(1);
+        String mergedPageId = liveness.keySet().iterator().next();
+        assertThat(mergedPageId).startsWith("m-");
+        assertThat(liveness.get(mergedPageId)[0]).isEqualTo(1L);
+    }
+
+    @Test
+    void scanLiveness_twoSequentialCompactions_excludesAllRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        // Round 1: pages "0" and "1" compacted, fact 1 survives
+        storage.insert(1L, "keep");
+        storage.insert(2L, "drop");
+        storage.insert(3L, "drop");
+        storage.insert(4L, "drop");
+        storage.safepoint(0);
+        storage.retract(2L);
+        storage.retract(3L);
+        storage.retract(4L);
+        storage.safepoint(1);
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        storage.safepoint(2);  // seals round 1
+
+        // Round 2: pages "3" and "4" compacted, fact 5 survives
+        storage.insert(5L, "keep");
+        storage.insert(6L, "drop");
+        storage.insert(7L, "drop");
+        storage.insert(8L, "drop");
+        storage.safepoint(3);
+        storage.retract(6L);
+        storage.retract(7L);
+        storage.retract(8L);
+        storage.safepoint(4);
+        CompactionCoordinator.compact(storage, Set.of("3", "4"));
+        storage.safepoint(5);  // seals round 2
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        assertThat(liveness).doesNotContainKey("0");
+        assertThat(liveness).doesNotContainKey("1");
+        assertThat(liveness).doesNotContainKey("3");
+        assertThat(liveness).doesNotContainKey("4");
+        // Only the two merged pages should remain
+        assertThat(liveness).hasSize(2);
+        assertThat(liveness.keySet()).allSatisfy(id -> assertThat(id).startsWith("m-"));
+    }
+
+    @Test
+    void scanLiveness_unsealedCompaction_sourcePagesSurvive() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.insert(2L, "b");
+        storage.safepoint(0);
+        storage.retract(2L);
+        storage.safepoint(1);
+
+        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        // No safepoint after COMMIT — not sealed
+
+        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+
+        // Unsealed: source pages are still canonical
+        assertThat(liveness).containsKey("0");
+        assertThat(liveness).containsKey("1");
     }
 }
