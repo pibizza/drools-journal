@@ -29,3 +29,4 @@
 | [2026-07-10-PaoloB02-two-fixes-and-a-dashboard.md](2026-07-10-PaoloB02-two-fixes-and-a-dashboard.md) | 2026-07-10 | Two Fixes and a Dashboard |
 | [2026-07-11-PaoloB01-the-queue-that-couldnt-forget.md](2026-07-11-PaoloB01-the-queue-that-couldnt-forget.md) | 2026-07-11 | The Queue That Couldn't Forget |
 | [2026-07-13-PaoloB01-from-design-to-directory.md](2026-07-13-PaoloB01-from-design-to-directory.md) | 2026-07-13 | From Design to Directory |
+| [2026-07-14-PaoloB01-dead-pages-and-api-question.md](2026-07-14-PaoloB01-dead-pages-and-api-question.md) | 2026-07-14 | The Dead Pages and the API Question |
