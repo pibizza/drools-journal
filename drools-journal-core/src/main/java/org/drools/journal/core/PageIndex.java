@@ -18,7 +18,6 @@ package org.drools.journal.core;
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
-import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.SafepointRecord;
 
 import java.util.ArrayList;
@@ -32,32 +31,30 @@ final class PageIndex {
 
     private PageIndex() {}
 
-    static Set<String> buildLivePageSet(final JournalStorage storage) {
+    static Set<String> buildLivePageSet(final JournalScanner scanner) {
         final List<String> pageIndex = new ArrayList<>();
         final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
         final List<String> currentIntervalPages = new ArrayList<>();
         String lastPageId = null;
 
-        try (JournalScanner scanner = storage.scan(0)) {
-            while (scanner.hasNext()) {
-                final JournalRecord record = scanner.next();
-                final String pageId = scanner.currentPageId();
+        while (scanner.hasNext()) {
+            final JournalRecord record = scanner.next();
+            final String pageId = scanner.currentPageId();
 
-                if (!pageId.equals(lastPageId)) {
-                    currentIntervalPages.add(pageId);
-                    lastPageId = pageId;
-                }
+            if (!pageId.equals(lastPageId)) {
+                currentIntervalPages.add(pageId);
+                lastPageId = pageId;
+            }
 
-                if (record instanceof CompactionCommitRecord commit) {
-                    pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
-                } else if (record instanceof SafepointRecord) {
-                    for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
-                        spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
-                    }
-                    pendingCommits.clear();
-                    pageIndex.addAll(currentIntervalPages);
-                    currentIntervalPages.clear();
+            if (record instanceof CompactionCommitRecord commit) {
+                pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
+            } else if (record instanceof SafepointRecord) {
+                for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
+                    spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
                 }
+                pendingCommits.clear();
+                pageIndex.addAll(currentIntervalPages);
+                currentIntervalPages.clear();
             }
         }
 
