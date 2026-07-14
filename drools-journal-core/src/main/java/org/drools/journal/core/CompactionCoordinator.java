@@ -94,6 +94,11 @@ class CompactionCoordinator {
     }
 
     static Map<String, long[]> scanLiveness(final JournalStorage storage) {
+        final Set<String> livePageIds;
+        try (JournalScanner phase0 = storage.scan(0)) {
+            livePageIds = PageIndex.buildLivePageSet(phase0);
+        }
+
         final Map<String, long[]> liveness = new HashMap<>();
         final Map<Long, String> factToPage = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
@@ -106,13 +111,17 @@ class CompactionCoordinator {
 
                 // Physical page boundary (size-triggered roll, no SafepointRecord)
                 if (!pageId.equals(lastPageId) && lastPageId != null) {
-                    flushPageLiveness(lastPageId, pending, liveness, factToPage);
+                    if (livePageIds.contains(lastPageId)) {
+                        flushPageLiveness(lastPageId, pending, liveness, factToPage);
+                    }
                     pending.clear();
                 }
                 lastPageId = pageId;
 
                 if (record instanceof SafepointRecord) {
-                    flushPageLiveness(pageId, pending, liveness, factToPage);
+                    if (livePageIds.contains(pageId)) {
+                        flushPageLiveness(pageId, pending, liveness, factToPage);
+                    }
                     pending.clear();
                 } else if (!(record instanceof CompactionPrepareRecord
                         || record instanceof CompactionCommitRecord)) {

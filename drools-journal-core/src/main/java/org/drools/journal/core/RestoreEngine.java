@@ -29,8 +29,6 @@ import org.drools.journal.api.SafepointRecord;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,42 +59,10 @@ class RestoreEngine {
     }
 
     ScanResult scan() {
-        // Phase 0: build the live page index from the raw stream.
-        // A commit is sealed — and its source pages retired — only when a
-        // SafepointRecord follows the CompactionCommitRecord.
-        // Each safepoint interval may span multiple physical pages (size-triggered
-        // rolls); all physical pages in the interval are added when it closes.
-        final List<String> pageIndex = new ArrayList<>();
-        final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
-        final List<String> currentIntervalPages = new ArrayList<>();
-        String lastPhase0PageId = null;
-
+        final Set<String> livePageIds;
         try (JournalScanner phase0 = journal.scan(0)) {
-            while (phase0.hasNext()) {
-                final JournalRecord record = phase0.next();
-                final String pageId = phase0.currentPageId();
-
-                // Track every physical page encountered in the current safepoint interval
-                if (!pageId.equals(lastPhase0PageId)) {
-                    currentIntervalPages.add(pageId);
-                    lastPhase0PageId = pageId;
-                }
-
-                if (record instanceof CompactionCommitRecord commit) {
-                    pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
-                } else if (record instanceof SafepointRecord) {
-                    for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
-                        spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
-                    }
-                    pendingCommits.clear();
-                    pageIndex.addAll(currentIntervalPages);
-                    currentIntervalPages.clear();
-                }
-            }
+            livePageIds = PageIndex.buildLivePageSet(phase0);
         }
-        // Unsealed commits (no following safepoint) leave original pages canonical.
-
-        final Set<String> livePageIds = new HashSet<>(pageIndex);
 
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
         // Flushes occur at physical page boundaries (size-triggered rolls) and at
@@ -139,23 +105,6 @@ class RestoreEngine {
         // Trailing records after the last safepoint are silently discarded.
 
         return new ScanResult(survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
-    }
-
-    private static void spliceIntoIndex(final List<String> pageIndex,
-                                        final String mergedId,
-                                        final String[] replacedIds) {
-        final Set<String> retired = Set.of(replacedIds);
-        int insertPos = -1;
-        for (int i = 0; i < pageIndex.size(); i++) {
-            if (retired.contains(pageIndex.get(i))) {
-                insertPos = i;
-                break;
-            }
-        }
-        pageIndex.removeIf(retired::contains);
-        if (insertPos >= 0) {
-            pageIndex.add(insertPos, mergedId);
-        }
     }
 
     private void flush(final List<JournalRecord> pending,
