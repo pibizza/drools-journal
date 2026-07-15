@@ -38,7 +38,7 @@ import org.kie.api.event.rule.RuleFlowGroupDeactivatedEvent;
 import org.kie.api.event.rule.RuleRuntimeEventListener;
 import org.kie.api.runtime.rule.FactHandle;
 
-class JournallingRuntimeEventListener implements RuleRuntimeEventListener, AgendaEventListener {
+public class JournallingRuntimeEventListener implements RuleRuntimeEventListener, AgendaEventListener {
 
     private final JournalStorage journal;
     private final ObjectStorageStrategy strategy;

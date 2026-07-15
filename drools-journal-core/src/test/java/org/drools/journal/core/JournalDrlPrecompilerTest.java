@@ -60,10 +60,10 @@ class JournalDrlPrecompilerTest {
                 when
                     $p : Person(age < 30)
                 then
+                    journal.stageModify("Rule_UpdateAge_modify_0", new Object[]{ 30 });
                     modify($p) {
                         setAge(30)
                     }
-                    journal.stageModify("Rule_UpdateAge_modify_0", new Object[]{ 30 });
                 end
                 """;
 
@@ -100,11 +100,11 @@ class JournalDrlPrecompilerTest {
                 when
                     $p : Person()
                 then
+                    journal.stageModify("Rule_UpdateBoth_modify_0", new Object[]{ 30, "Bob" });
                     modify($p) {
                         setAge(30),
                         setName("Bob")
                     }
-                    journal.stageModify("Rule_UpdateBoth_modify_0", new Object[]{ 30, "Bob" });
                 end
                 """;
 
@@ -168,10 +168,10 @@ class JournalDrlPrecompilerTest {
                     $p : Person()
                     $newAge : Integer()
                 then
+                    journal.stageModify("Rule_UpdateWithVar_modify_0", new Object[]{ $newAge });
                     modify($p) {
                         setAge($newAge)
                     }
-                    journal.stageModify("Rule_UpdateWithVar_modify_0", new Object[]{ $newAge });
                 end
                 """;
 

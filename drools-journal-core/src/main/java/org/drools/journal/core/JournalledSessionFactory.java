@@ -42,29 +42,42 @@ public final class JournalledSessionFactory {
     private JournalledSessionFactory() {}
 
     public static JournalledKieSession open(final KieBase kbase, final JournalStorage storage) {
-        return open(kbase, storage, CompactionCoordinator.DEFAULT_INTERVAL);
+        return open(kbase, storage, new ModifyLambdaRegistry(), CompactionCoordinator.DEFAULT_INTERVAL);
     }
 
     public static JournalledKieSession open(final KieBase kbase,
                                             final JournalStorage storage,
                                             final Duration compactionInterval) {
+        return open(kbase, storage, new ModifyLambdaRegistry(), compactionInterval);
+    }
+
+    public static JournalledKieSession open(final KieBase kbase,
+                                            final JournalStorage storage,
+                                            final ModifyLambdaRegistry registry,
+                                            final Duration compactionInterval) {
         Environment env = KieServices.get().newEnvironment();
         env.set(JOURNAL_KEY, storage);
         JournalledKieSession session = (JournalledKieSession) kbase.newKieSession(null, env);
         if (!storage.isEmpty()) {
-            restore(session, storage);
+            restore(session, storage, registry);
         }
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(storage, new EmbedStrategy());
         session.addEventListener((org.kie.api.event.rule.RuleRuntimeEventListener) listener);
         session.addEventListener((org.kie.api.event.rule.AgendaEventListener) listener);
+        try {
+            session.setGlobal("journal", listener);
+        } catch (RuntimeException ignored) {
+        }
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, compactionInterval);
         coordinator.start();
         session.setCompactionCoordinator(coordinator);
         return session;
     }
 
-    private static void restore(final JournalledKieSession session, final JournalStorage storage) {
-        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+    private static void restore(final JournalledKieSession session,
+                                final JournalStorage storage,
+                                final ModifyLambdaRegistry registry) {
+        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, registry).scan();
         Map<Long, FactHandle> oldToNew = insertNonLogicalFacts(session, scanResult);
         ReplayFilter replayFilter = buildReplayFilter(scanResult, oldToNew);
         session.fireAllRules(replayFilter);

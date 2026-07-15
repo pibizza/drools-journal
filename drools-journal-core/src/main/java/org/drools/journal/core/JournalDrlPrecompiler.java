@@ -97,10 +97,11 @@ public final class JournalDrlPrecompiler {
 
             String stageCall = buildStageModifyCall(lambdaClassRef, setterCalls);
 
-            int insertPos = findModifyBlockEnd(consequence, offset);
+            int insertPos = findModifyStart(consequence, offset);
             if (insertPos >= 0) {
-                result.insert(insertPos, "\n    " + stageCall);
-                offset = insertPos + stageCall.length() + 5;
+                String insertion = stageCall + "\n    ";
+                result.insert(insertPos, insertion);
+                offset = insertPos + insertion.length();
             }
 
             modifyIndex++;
@@ -165,26 +166,8 @@ public final class JournalDrlPrecompiler {
         }
     }
 
-    private static int findModifyBlockEnd(final String consequence, final int fromIndex) {
-        int modifyPos = consequence.indexOf("modify", fromIndex);
-        if (modifyPos < 0) {
-            return -1;
-        }
-        int braceDepth = 0;
-        boolean inBlock = false;
-        for (int i = modifyPos; i < consequence.length(); i++) {
-            char c = consequence.charAt(i);
-            if (c == '{') {
-                braceDepth++;
-                inBlock = true;
-            } else if (c == '}') {
-                braceDepth--;
-                if (inBlock && braceDepth == 0) {
-                    return i + 1;
-                }
-            }
-        }
-        return -1;
+    private static int findModifyStart(final String consequence, final int fromIndex) {
+        return consequence.indexOf("modify", fromIndex);
     }
 
     private static String buildLambdaClassRef(final String ruleName, final int index) {
