@@ -153,28 +153,34 @@ on unresolved `lambdaClassRef`.
 
 ---
 
-## Modify-as-Lambda Compiler Rewrite (Phase 5 — deferred)
+## Modify-as-Delta via DRL Precompiler (Phase 5)
 
-In durable mode, the DRL compiler rewrites `modify` blocks to emit a `ModifyRecord`
-instead of a full object snapshot:
+`JournalDrlPrecompiler` transforms DRL text before `KieHelper.build()`, rewriting
+`modify` blocks to emit `ModifyRecord`s instead of full object snapshots. Opt-in —
+if the user skips the precompiler, the full-snapshot fallback works unchanged.
 
 ```java
-// Normal mode:
-person.setAge(newAge);
-drools.update(person);
-
-// Durable mode (after compiler rewrite):
-person.setAge(newAge);
-journal.appendModify(handle, "Rule_MyRule_modify_0", new Object[]{ newAge });
-drools.update(person);   // Rete notification only — does NOT emit a second InsertRecord
+ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+String rewritten = JournalDrlPrecompiler.rewrite(originalDrl, registry, classLoader);
+KieBase kbase = new KieHelper().addContent(rewritten, ResourceType.DRL).build();
+JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, registry, Duration.ZERO);
 ```
 
-Lambda class names are deterministic: `Rule_{ruleName}_modify_{index}`. On restore,
-`ModifyRecord` replay applies the lambda directly to the in-memory fact — no per-modify
-Rete notification during restore (bulk re-propagation handles it in Phase 1.5).
+The precompiler parses the DRL via `DrlParser` (rule envelope) and `MvelParser`
+(consequence body AST). For each `ModifyStatement`, it:
+1. Extracts setter names and argument expressions from the AST
+2. Creates a `MethodHandleModifyLambda` and registers it with a deterministic name
+   (`Rule_{ruleName}_modify_{index}`)
+3. Inserts a `journal.stageModify(...)` call before the modify block in the AST
+4. Serializes the modified AST back via `PrintUtil.printNode()`
 
-**This requires upstream changes to `drools-model-codegen`** (`Consequence.addUpdateBitMask()`)
-and will be submitted as a separate patch. Until it lands, the full-snapshot fallback is used.
+The `JournallingRuntimeEventListener` is set as a DRL global (`journal`).
+`stageModify()` stages the lambda ref + params; `objectUpdated()` consumes
+the staged data and writes a `ModifyRecord` instead of a full `InsertRecord`.
+
+On restore, `RestoreEngine` looks up the lambda via `ModifyLambdaRegistry` and
+applies it to the surviving fact. Crash recovery: rerun the precompiler on the
+same DRL — deterministic naming ensures identical registry population.
 
 ---
 
@@ -317,8 +323,8 @@ Concurrent compactions on distinct page pairs are supported.
 | 4a — Core (runtime hooks) | JournalledNamedEntryPoint, JournalledAgenda, JournallingRuntimeEventListener, JournalledSessionFactory | ✅ Complete |
 | 4b — Core (restore) | RestoreEngine, ReplayFilter, TMS wiring | ✅ Complete |
 | 4c — Core (compaction) | CompactionCoordinator | ✅ Complete |
-| 5 — Compiler rewrite | DRL `modify` → `ModifyRecord` (upstream `drools-model-codegen` patch) | 🔁 Deferred |
-| 6 — Chronicle backend | ChronicleJournalStorage/Scanner | ⬜ Pending |
+| 5 — DRL precompiler | DRL `modify` → `ModifyRecord` via standalone `JournalDrlPrecompiler` | ✅ Complete |
+| 6 — Chronicle backend | ChronicleJournalStorage, multi-queue scanner, catalog index | ✅ Complete |
 | 7 — Aeron backend | SBE schema + AeronJournalStorage/Scanner | ⬜ Pending |
 | 8 — Integration tests | End-to-end durability, TMS, compaction, schema evolution | ⬜ Pending |
 
