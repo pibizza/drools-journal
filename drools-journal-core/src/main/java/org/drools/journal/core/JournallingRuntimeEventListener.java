@@ -15,6 +15,9 @@
  */
 package org.drools.journal.core;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.util.List;
 
 import org.drools.core.common.InternalFactHandle;
@@ -41,6 +44,8 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
     private final ObjectStorageStrategy strategy;
     private long currentActivationId = -1L;
     private long nextActivationId = 0L;
+    private String pendingLambdaClassRef;
+    private Object[] pendingParams;
 
     JournallingRuntimeEventListener(final JournalStorage journal, final ObjectStorageStrategy strategy) {
         this.journal = journal;
@@ -59,10 +64,31 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
         }
     }
 
+    public void stageModify(final String lambdaClassRef, final Object[] params) {
+        pendingLambdaClassRef = lambdaClassRef;
+        pendingParams = params;
+    }
+
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        if (pendingLambdaClassRef != null) {
+            journal.modify(handle.getId(), pendingLambdaClassRef, serializeParams(pendingParams));
+            pendingLambdaClassRef = null;
+            pendingParams = null;
+        } else {
+            journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        }
+    }
+
+    private static byte[] serializeParams(final Object[] params) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+            oos.writeObject(params);
+            return bos.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to serialize modify parameters", e);
+        }
     }
 
     @Override
