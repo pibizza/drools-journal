@@ -15,9 +15,6 @@
  */
 package org.drools.journal.core;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.util.List;
 
 import org.drools.core.common.InternalFactHandle;
@@ -73,21 +70,11 @@ public class JournallingRuntimeEventListener implements RuleRuntimeEventListener
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
         if (pendingLambdaClassRef != null) {
-            journal.modify(handle.getId(), pendingLambdaClassRef, serializeParams(pendingParams));
+            journal.modify(handle.getId(), pendingLambdaClassRef, JavaSerializer.serialize(pendingParams));
             pendingLambdaClassRef = null;
             pendingParams = null;
         } else {
             journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
-        }
-    }
-
-    private static byte[] serializeParams(final Object[] params) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-            oos.writeObject(params);
-            return bos.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to serialize modify parameters", e);
         }
     }
 
