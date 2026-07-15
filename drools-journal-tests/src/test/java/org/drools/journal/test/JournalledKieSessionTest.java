@@ -15,19 +15,32 @@
  */
 package org.drools.journal.test;
 
+import java.io.Serializable;
+import java.time.Duration;
+
 import org.drools.journal.core.InMemoryJournalStorage;
+import org.drools.journal.core.JournalDrlPrecompiler;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
+import org.drools.journal.core.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.rule.FactHandle;
 import org.kie.internal.utils.KieHelper;
 
-import java.time.Duration;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JournalledKieSessionTest {
+
+    public static class Ticket implements Serializable {
+        private String status;
+
+        public Ticket() {}
+        public Ticket(final String status) { this.status = status; }
+        public String getStatus() { return status; }
+        public void setStatus(final String status) { this.status = status; }
+        @Override public String toString() { return status; }
+    }
 
     private static final String RULE = """
             package org.drools.journal.test
@@ -145,6 +158,43 @@ class JournalledKieSessionTest {
                 INSERT  id=1  Integer(42)
                 INSERT  id=2  logical  justifiedBy=1  String(hello)
                 MATCH  id=1  pkg=org.drools.journal.test  rule=LogicalInserter  facts=[1]
+                SAFEPOINT  seq=0
+                """);
+    }
+
+    @Test
+    void modifyWithPrecompiler_firesRule_writesModifyRecord() {
+        String drl = """
+                package org.drools.journal.test;
+                import org.drools.journal.test.JournalledKieSessionTest.Ticket;
+
+                rule "CloseTicket"
+                when
+                    $t : Ticket(status == "open")
+                then
+                    modify($t) {
+                        setStatus("closed")
+                    }
+                end
+                """;
+
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        String rewritten = JournalDrlPrecompiler.rewrite(
+                drl, registry, getClass().getClassLoader());
+
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        try (JournalledKieSession session = JournalledSessionFactory.open(
+                new KieHelper().addContent(rewritten, ResourceType.DRL).build(),
+                storage, registry, Duration.ZERO)) {
+            session.insert(new Ticket("open"));
+            session.fireAllRules();
+        }
+
+        assertThat(storage).hasToString("""
+                INSERT  id=1  Ticket(open)
+                MODIFY  id=1  lambda=Rule_CloseTicket_modify_0
+                MATCH  id=1  pkg=org.drools.journal.test  rule=CloseTicket  facts=[1]
                 SAFEPOINT  seq=0
                 """);
     }

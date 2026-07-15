@@ -15,12 +15,6 @@
  */
 package org.drools.journal.core;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-
 import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.Payload;
@@ -34,23 +28,13 @@ public final class EmbedStrategy implements ObjectStorageStrategy {
 
     @Override
     public Payload store(final Object fact, final FactHandle handle) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-            oos.writeObject(fact);
-            return new EmbeddedPayload(bos.toByteArray());
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to serialize fact: " + fact.getClass().getName(), e);
-        }
+        return new EmbeddedPayload(JavaSerializer.serialize(fact));
     }
 
     @Override
     public Object load(final Payload payload) {
         if (payload instanceof EmbeddedPayload embedded) {
-            try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(embedded.bytes()))) {
-                return ois.readObject();
-            } catch (IOException | ClassNotFoundException e) {
-                throw new RuntimeException("Failed to deserialize payload", e);
-            }
+            return JavaSerializer.deserialize(embedded.bytes());
         }
         throw new UnsupportedOperationException("EmbedStrategy cannot load payload type: " + payload.getClass().getName());
     }

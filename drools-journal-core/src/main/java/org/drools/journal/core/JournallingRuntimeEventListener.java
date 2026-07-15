@@ -35,12 +35,14 @@ import org.kie.api.event.rule.RuleFlowGroupDeactivatedEvent;
 import org.kie.api.event.rule.RuleRuntimeEventListener;
 import org.kie.api.runtime.rule.FactHandle;
 
-class JournallingRuntimeEventListener implements RuleRuntimeEventListener, AgendaEventListener {
+public class JournallingRuntimeEventListener implements RuleRuntimeEventListener, AgendaEventListener {
 
     private final JournalStorage journal;
     private final ObjectStorageStrategy strategy;
     private long currentActivationId = -1L;
     private long nextActivationId = 0L;
+    private String pendingLambdaClassRef;
+    private Object[] pendingParams;
 
     JournallingRuntimeEventListener(final JournalStorage journal, final ObjectStorageStrategy strategy) {
         this.journal = journal;
@@ -59,10 +61,21 @@ class JournallingRuntimeEventListener implements RuleRuntimeEventListener, Agend
         }
     }
 
+    public void stageModify(final String lambdaClassRef, final Object[] params) {
+        pendingLambdaClassRef = lambdaClassRef;
+        pendingParams = params;
+    }
+
     @Override
     public void objectUpdated(final ObjectUpdatedEvent event) {
         InternalFactHandle handle = (InternalFactHandle) event.getFactHandle();
-        journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        if (pendingLambdaClassRef != null) {
+            journal.modify(handle.getId(), pendingLambdaClassRef, JavaSerializer.serialize(pendingParams));
+            pendingLambdaClassRef = null;
+            pendingParams = null;
+        } else {
+            journal.insert(handle.getId(), strategy.store(event.getObject(), handle));
+        }
     }
 
     @Override

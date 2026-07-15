@@ -18,9 +18,14 @@ package org.drools.journal.test;
 import java.nio.file.Path;
 import java.time.Duration;
 
+import org.drools.journal.api.JournalRecord;
+import org.drools.journal.api.JournalScanner;
+import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.chronicle.ChronicleJournalStorage;
+import org.drools.journal.core.JournalDrlPrecompiler;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
+import org.drools.journal.core.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.kie.api.KieBase;
@@ -30,6 +35,16 @@ import org.kie.internal.utils.KieHelper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ChronicleJournalledKieSessionIT {
+
+    public static class Ticket implements java.io.Serializable {
+        private String status;
+
+        public Ticket() {}
+        public Ticket(final String status) { this.status = status; }
+        public String getStatus() { return status; }
+        public void setStatus(final String status) { this.status = status; }
+        @Override public String toString() { return status; }
+    }
 
     private static final String RULE = """
             package org.drools.journal.test
@@ -85,6 +100,75 @@ class ChronicleJournalledKieSessionIT {
              JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
             final java.util.Collection<Object> objects = (java.util.Collection<Object>) session.getObjects();
             assertThat(objects).containsExactlyInAnyOrder(1, 2);
+        }
+    }
+
+    private static final String MODIFY_RULE = """
+            package org.drools.journal.test;
+            import org.drools.journal.test.ChronicleJournalledKieSessionIT.Ticket;
+
+            rule "CloseTicket"
+            when
+                $t : Ticket(status == "open")
+            then
+                modify($t) {
+                    setStatus("closed")
+                }
+            end
+            """;
+
+    @Test
+    void modifyWithPrecompiler_chronicleBackend_writesModifyRecord() {
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        String rewritten = JournalDrlPrecompiler.rewrite(
+                MODIFY_RULE, registry, getClass().getClassLoader());
+        KieBase kbase = new KieHelper().addContent(rewritten, ResourceType.DRL).build();
+        String journalPath = tempDir.resolve("modify-write").toString();
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
+             JournalledKieSession session = JournalledSessionFactory.open(
+                     kbase, storage, registry, Duration.ZERO)) {
+            session.insert(new Ticket("open"));
+            session.fireAllRules();
+
+            try (JournalScanner scanner = storage.scan(0)) {
+                boolean found = false;
+                while (scanner.hasNext()) {
+                    if (scanner.next() instanceof ModifyRecord mr) {
+                        assertThat(mr.lambdaClassRef()).isEqualTo("Rule_CloseTicket_modify_0");
+                        found = true;
+                    }
+                }
+                assertThat(found).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void modifyWithPrecompiler_chronicleBackend_restoresModifiedFact() {
+        ModifyLambdaRegistry registry = new ModifyLambdaRegistry();
+        String rewritten = JournalDrlPrecompiler.rewrite(
+                MODIFY_RULE, registry, getClass().getClassLoader());
+        KieBase kbase = new KieHelper().addContent(rewritten, ResourceType.DRL).build();
+        String journalPath = tempDir.resolve("modify-restore").toString();
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
+             JournalledKieSession session = JournalledSessionFactory.open(
+                     kbase, storage, registry, Duration.ZERO)) {
+            session.insert(new Ticket("open"));
+            session.fireAllRules();
+        }
+
+        ModifyLambdaRegistry freshRegistry = new ModifyLambdaRegistry();
+        String freshRewritten = JournalDrlPrecompiler.rewrite(
+                MODIFY_RULE, freshRegistry, getClass().getClassLoader());
+        KieBase freshKbase = new KieHelper().addContent(freshRewritten, ResourceType.DRL).build();
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
+             JournalledKieSession session = JournalledSessionFactory.open(
+                     freshKbase, storage, freshRegistry, Duration.ZERO)) {
+            Ticket restored = (Ticket) session.getObjects().iterator().next();
+            assertThat(restored.getStatus()).isEqualTo("closed");
         }
     }
 }

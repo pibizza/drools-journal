@@ -125,8 +125,11 @@ class RestoreEngine {
                 firedMatches.add(match);
                 firedMatchesById.put(match.id(), match);
             } else if (record instanceof ModifyRecord modify) {
-                if (lambdaRegistry.lookup(modify.lambdaClassRef()) == null) {
-                    throw new JournalSchemaEvolutionException(modify.lambdaClassRef());
+                ModifyLambda lambda = lambdaRegistry.lookup(modify.lambdaClassRef());
+                Object fact = survivingFacts.get(modify.factHandleId());
+                if (fact != null) {
+                    Object[] params = (Object[]) JavaSerializer.deserialize(modify.parameters());
+                    lambda.apply(fact, params);
                 }
             }
         }
