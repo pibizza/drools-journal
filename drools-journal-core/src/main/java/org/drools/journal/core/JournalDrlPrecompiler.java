@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
@@ -47,8 +48,9 @@ public final class JournalDrlPrecompiler {
                                  final ModifyLambdaRegistry registry,
                                  final ClassLoader classLoader) {
         PackageDescr pkg = parseDrl(drl);
-        String result = drl;
+        StringBuilder result = new StringBuilder(drl);
         boolean modified = false;
+        int searchFrom = 0;
 
         for (RuleDescr rule : pkg.getRules()) {
             String consequence = (String) rule.getConsequence();
@@ -58,16 +60,20 @@ public final class JournalDrlPrecompiler {
 
             String rewritten = rewriteConsequence(consequence, rule, pkg, registry, classLoader);
             if (!rewritten.equals(consequence)) {
-                result = result.replace(consequence, rewritten);
-                modified = true;
+                int pos = result.indexOf(consequence, searchFrom);
+                if (pos >= 0) {
+                    result.replace(pos, pos + consequence.length(), rewritten);
+                    searchFrom = pos + rewritten.length();
+                    modified = true;
+                }
             }
         }
 
         if (modified) {
-            result = injectGlobalDeclaration(result, pkg);
+            return injectGlobalDeclaration(result.toString(), pkg);
         }
 
-        return result;
+        return result.toString();
     }
 
     private static String rewriteConsequence(final String consequence,
@@ -81,11 +87,13 @@ public final class JournalDrlPrecompiler {
             return consequence;
         }
 
-        StringBuilder result = new StringBuilder(consequence);
+        NodeList<Statement> stmts = block.getStatements();
         int modifyIndex = 0;
-        int offset = 0;
 
-        for (ModifyStatement modifyStmt : modifyStmts) {
+        for (int i = 0; i < stmts.size(); i++) {
+            if (!(stmts.get(i) instanceof ModifyStatement modifyStmt)) {
+                continue;
+            }
             String targetVar = PrintUtil.printNode(modifyStmt.getModifyObject());
             List<SetterCall> setterCalls = extractSetterCalls(modifyStmt);
             if (setterCalls.isEmpty()) {
@@ -95,19 +103,23 @@ public final class JournalDrlPrecompiler {
             String lambdaClassRef = buildLambdaClassRef(rule.getName(), modifyIndex);
             registerLambda(lambdaClassRef, targetVar, setterCalls, rule, pkg, registry, classLoader);
 
-            String stageCall = buildStageModifyCall(lambdaClassRef, setterCalls);
-
-            int insertPos = findModifyStart(consequence, offset);
-            if (insertPos >= 0) {
-                String insertion = stageCall + "\n    ";
-                result.insert(insertPos, insertion);
-                offset = insertPos + insertion.length();
-            }
+            String stageCallText = buildStageModifyCall(lambdaClassRef, setterCalls);
+            Statement stageStmt = MvelParser.parseBlock("{" + stageCallText + "}").getStatement(0);
+            stmts.add(i, stageStmt);
+            i++;
 
             modifyIndex++;
         }
 
-        return result.toString();
+        return unwrapBlock(PrintUtil.printNode(block));
+    }
+
+    private static String unwrapBlock(final String blockText) {
+        String trimmed = blockText.strip();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            return trimmed.substring(1, trimmed.length() - 1).strip() + "\n";
+        }
+        return trimmed;
     }
 
     private static List<SetterCall> extractSetterCalls(final ModifyStatement modifyStmt) {
@@ -164,10 +176,6 @@ public final class JournalDrlPrecompiler {
         } catch (ClassNotFoundException e) {
             throw new IllegalArgumentException("Cannot resolve type: " + typeName, e);
         }
-    }
-
-    private static int findModifyStart(final String consequence, final int fromIndex) {
-        return consequence.indexOf("modify", fromIndex);
     }
 
     private static String buildLambdaClassRef(final String ruleName, final int index) {

@@ -64,14 +64,24 @@ public final class JournalledSessionFactory {
         JournallingRuntimeEventListener listener = new JournallingRuntimeEventListener(storage, new EmbedStrategy());
         session.addEventListener((org.kie.api.event.rule.RuleRuntimeEventListener) listener);
         session.addEventListener((org.kie.api.event.rule.AgendaEventListener) listener);
-        try {
+        if (hasJournalGlobal(kbase)) {
             session.setGlobal("journal", listener);
-        } catch (RuntimeException ignored) {
         }
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, compactionInterval);
         coordinator.start();
         session.setCompactionCoordinator(coordinator);
         return session;
+    }
+
+    private static boolean hasJournalGlobal(final KieBase kbase) {
+        for (var pkg : kbase.getKiePackages()) {
+            for (var global : pkg.getGlobalVariables()) {
+                if ("journal".equals(global.getName())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void restore(final JournalledKieSession session,
