@@ -210,6 +210,11 @@ public final class ChronicleJournalStorage implements JournalStorage {
     }
 
     @Override
+    public void retirePages(final String... pageIds) {
+        // TODO #34: implement Chronicle page directory deletion
+    }
+
+    @Override
     public void close() {
         if (!closed) {
             closed = true;

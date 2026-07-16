@@ -219,6 +219,32 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void retirePages_inMemory_removesSourcePagesFromJournal() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);           // page "0"
+        storage.insert(2L, "b");
+        storage.safepoint(1);           // page "1"
+
+        assertThat(storage.currentPageNumber()).isEqualTo(2);
+
+        storage.retirePages("0");
+
+        assertThat(storage.currentPageNumber()).isEqualTo(1);
+    }
+
+    @Test
+    void retirePages_inMemory_unknownPageId_isIgnored() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+
+        storage.retirePages("nonexistent");
+
+        assertThat(storage.currentPageNumber()).isEqualTo(1);
+    }
+
+    @Test
     void stop_whenNeverStarted_isNoOp() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, Duration.ZERO);
