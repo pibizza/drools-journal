@@ -31,3 +31,4 @@
 | [2026-07-13-PaoloB01-from-design-to-directory.md](2026-07-13-PaoloB01-from-design-to-directory.md) | 2026-07-13 | From Design to Directory |
 | [2026-07-14-PaoloB01-dead-pages-and-api-question.md](2026-07-14-PaoloB01-dead-pages-and-api-question.md) | 2026-07-14 | The Dead Pages and the API Question |
 | [2026-07-15-PaoloB01-precompiler-that-rewrites-rules.md](2026-07-15-PaoloB01-precompiler-that-rewrites-rules.md) | 2026-07-15 | The Precompiler That Rewrites Rules |
+| [2026-07-16-PaoloB01-dead-pages-finally-die.md](2026-07-16-PaoloB01-dead-pages-finally-die.md) | 2026-07-16 | Dead Pages Finally Die |
