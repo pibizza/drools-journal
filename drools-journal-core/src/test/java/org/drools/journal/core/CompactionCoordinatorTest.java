@@ -251,6 +251,22 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void runCycle_unsealedCompaction_doesNotRetireSourcePages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        // No safepoint — commit is not sealed
+
+        CompactionCoordinator.onDemand(storage).runCycle();
+
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
+        assertThat(liveness).containsKey("0");
+    }
+
+    @Test
     void retirePages_inMemory_unknownPageId_isIgnored() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
