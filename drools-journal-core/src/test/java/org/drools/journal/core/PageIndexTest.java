@@ -48,7 +48,7 @@ class PageIndexTest {
         storage.retract(1L);
         storage.safepoint(0);          // page "0": 0% live
 
-        CompactionCoordinator.compact(storage, Set.of("0"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         storage.safepoint(1);          // seals the commit
 
         PageIndex.PageIndexStatus status;
@@ -66,7 +66,7 @@ class PageIndexTest {
         storage.retract(1L);
         storage.safepoint(0);          // page "0": 0% live
 
-        CompactionCoordinator.compact(storage, Set.of("0"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         // No safepoint — commit is not sealed
 
         PageIndex.PageIndexStatus status;
@@ -85,14 +85,14 @@ class PageIndexTest {
         storage.insert(1L, "a");
         storage.retract(1L);
         storage.safepoint(0);
-        CompactionCoordinator.compact(storage, Set.of("0"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         storage.safepoint(1);
 
         // Round 2: page "2" is sparse, compact and seal
         storage.insert(2L, "b");
         storage.retract(2L);
         storage.safepoint(2);
-        CompactionCoordinator.compact(storage, Set.of("2"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("2"));
         storage.safepoint(3);
 
         PageIndex.PageIndexStatus status;

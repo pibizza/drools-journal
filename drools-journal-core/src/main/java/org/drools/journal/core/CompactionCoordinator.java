@@ -52,6 +52,10 @@ class CompactionCoordinator {
         this.interval = interval;
     }
 
+    static CompactionCoordinator onDemand(final JournalStorage storage) {
+        return new CompactionCoordinator(storage, Duration.ZERO);
+    }
+
     void start() {
         if (Duration.ZERO.equals(interval)) {
             return;
@@ -80,8 +84,17 @@ class CompactionCoordinator {
         }
     }
 
-    private void runCycle() {
-        Map<String, long[]> liveness = scanLiveness(storage);
+    void runCycle() {
+        PageIndex.PageIndexStatus pageStatus;
+        try (JournalScanner phase0 = storage.scan(0)) {
+            pageStatus = PageIndex.buildLivePageSet(phase0);
+        }
+
+        if (!pageStatus.retiredPages().isEmpty()) {
+            storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
+        }
+
+        Map<String, long[]> liveness = scanLiveness(pageStatus.livePages());
         Set<String> candidates = new HashSet<>();
         liveness.forEach((id, counts) -> {
             if (isSparse(counts)) {
@@ -89,16 +102,19 @@ class CompactionCoordinator {
             }
         });
         if (!candidates.isEmpty()) {
-            compact(storage, candidates);
+            compact(candidates);
         }
     }
 
-    static Map<String, long[]> scanLiveness(final JournalStorage storage) {
+    Map<String, long[]> scanLiveness() {
         final Set<String> livePageIds;
         try (JournalScanner phase0 = storage.scan(0)) {
             livePageIds = PageIndex.buildLivePageSet(phase0).livePages();
         }
+        return scanLiveness(livePageIds);
+    }
 
+    Map<String, long[]> scanLiveness(final Set<String> livePageIds) {
         final Map<String, long[]> liveness = new HashMap<>();
         final Map<Long, String> factToPage = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
@@ -166,7 +182,7 @@ class CompactionCoordinator {
         return (double) counts[0] / counts[1] < 0.30;
     }
 
-    static void compact(final JournalStorage storage, final Set<String> pageIds) {
+    void compact(final Set<String> pageIds) {
         if (pageIds.isEmpty()) {
             return;
         }
