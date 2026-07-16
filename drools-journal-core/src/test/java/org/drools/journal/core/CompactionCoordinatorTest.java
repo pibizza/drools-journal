@@ -38,7 +38,7 @@ class CompactionCoordinatorTest {
     void scan_emptyJournal_producesEmptyLivenessMap() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness).isEmpty();
     }
@@ -49,7 +49,7 @@ class CompactionCoordinatorTest {
         storage.insert(1L, "a");
         storage.safepoint(0);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(CompactionCoordinator.isSparse(liveness.get("0"))).isFalse();
     }
@@ -61,7 +61,7 @@ class CompactionCoordinatorTest {
         storage.retract(1L);
         storage.safepoint(0);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(CompactionCoordinator.isSparse(liveness.get("0"))).isTrue();
     }
@@ -73,7 +73,7 @@ class CompactionCoordinatorTest {
         storage.retract(1L);
         storage.safepoint(0);        // page "0": [insert(1), retract(1)]
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("0")[0]).isEqualTo(0L); // liveCount
     }
@@ -86,7 +86,7 @@ class CompactionCoordinatorTest {
         storage.retract(1L);
         storage.safepoint(1);        // page "1": [retract(1)]
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("1")[1]).isEqualTo(1L); // totalCount — retract occupies space
     }
@@ -99,7 +99,7 @@ class CompactionCoordinatorTest {
         storage.retract(1L);
         storage.safepoint(1);        // page "1": [retract(1)]
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("0")[0]).isEqualTo(0L); // insert is no longer live
     }
@@ -111,7 +111,7 @@ class CompactionCoordinatorTest {
         storage.modify(1L, "Rule_MyRule_modify_0", new byte[0]);
         storage.safepoint(0);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         long[] counts = liveness.get("0");
         assertThat(counts[0]).isEqualTo(1L); // liveCount — modify does not contribute
@@ -125,7 +125,7 @@ class CompactionCoordinatorTest {
         storage.ruleMatch(1L, "myRule", 1L);
         storage.safepoint(0);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         long[] counts = liveness.get("0");
         assertThat(counts[0]).isEqualTo(1L); // liveCount — ruleMatch does not contribute
@@ -140,7 +140,7 @@ class CompactionCoordinatorTest {
         storage.insert(2L, "b");
         storage.safepoint(1);        // page "1": [insert(2)]
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("0")[0]).isEqualTo(1L); // liveCount
         assertThat(liveness.get("1")[0]).isEqualTo(1L); // liveCount
@@ -152,7 +152,7 @@ class CompactionCoordinatorTest {
         storage.insert(1L, "a");
         storage.safepoint(0);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         long[] counts = liveness.get("0");
         assertThat(counts[0]).isEqualTo(1L); // liveCount
@@ -167,7 +167,7 @@ class CompactionCoordinatorTest {
         storage.insert(2L, "b");  // page "1"
         storage.safepoint(0);     // page "1" closes with safepoint
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness).hasSize(2);
         assertThat(liveness.get("0")[0]).isEqualTo(1L); // live
@@ -184,7 +184,7 @@ class CompactionCoordinatorTest {
         storage.retract(1L);       // page "1"
         storage.safepoint(0);     // page "1" closes
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("0")[0]).isEqualTo(0L); // insert was retracted
         assertThat(liveness.get("0")[1]).isEqualTo(1L); // 1 total record
@@ -212,10 +212,69 @@ class CompactionCoordinatorTest {
         storage.insert(1L, "updated");
         storage.safepoint(1);              // page "1": [insert(1)] — supersedes page "0"
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness.get("0")[0]).isEqualTo(0L); // old insert is dead
         assertThat(liveness.get("1")[0]).isEqualTo(1L); // new insert is live
+    }
+
+    @Test
+    void retirePages_inMemory_removesSourcePagesFromJournal() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);           // page "0"
+        storage.insert(2L, "b");
+        storage.safepoint(1);           // page "1"
+
+        assertThat(storage.currentPageNumber()).isEqualTo(2);
+
+        storage.retirePages("0");
+
+        assertThat(storage.currentPageNumber()).isEqualTo(1);
+    }
+
+    @Test
+    void runCycle_afterSealedCompaction_retiresSourcePages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);           // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        storage.safepoint(1);           // seals the COMMIT
+
+        int pageCountBefore = storage.currentPageNumber();
+
+        CompactionCoordinator.onDemand(storage).runCycle();
+
+        assertThat(storage.currentPageNumber()).isLessThan(pageCountBefore);
+    }
+
+    @Test
+    void runCycle_unsealedCompaction_doesNotRetireSourcePages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        // No safepoint — commit is not sealed
+
+        CompactionCoordinator.onDemand(storage).runCycle();
+
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
+        assertThat(liveness).containsKey("0");
+    }
+
+    @Test
+    void retirePages_inMemory_unknownPageId_isIgnored() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+
+        storage.retirePages("nonexistent");
+
+        assertThat(storage.currentPageNumber()).isEqualTo(1);
     }
 
     @Test
@@ -239,10 +298,10 @@ class CompactionCoordinatorTest {
         storage.retract(4L);
         storage.safepoint(1);            // page "1": 3 retracts
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         storage.safepoint(2);            // seals the COMMIT — pages "0" and "1" are retired
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness).doesNotContainKey("0");
         assertThat(liveness).doesNotContainKey("1");
@@ -261,10 +320,10 @@ class CompactionCoordinatorTest {
         storage.retract(4L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         storage.safepoint(2);
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         // The merged page should be present and contain the one surviving fact
         assertThat(liveness).hasSize(1);
@@ -287,7 +346,7 @@ class CompactionCoordinatorTest {
         storage.retract(3L);
         storage.retract(4L);
         storage.safepoint(1);
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         storage.safepoint(2);  // seals round 1
 
         // Round 2: pages "3" and "4" compacted, fact 5 survives
@@ -300,10 +359,10 @@ class CompactionCoordinatorTest {
         storage.retract(7L);
         storage.retract(8L);
         storage.safepoint(4);
-        CompactionCoordinator.compact(storage, Set.of("3", "4"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("3", "4"));
         storage.safepoint(5);  // seals round 2
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness).doesNotContainKey("0");
         assertThat(liveness).doesNotContainKey("1");
@@ -323,10 +382,10 @@ class CompactionCoordinatorTest {
         storage.retract(2L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         // No safepoint after COMMIT — not sealed
 
-        Map<String, long[]> liveness = CompactionCoordinator.scanLiveness(storage);
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         // Unsealed: source pages are still canonical
         assertThat(liveness).containsKey("0");

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
@@ -151,6 +152,16 @@ public class InMemoryJournalStorage implements JournalStorage {
     public synchronized long latestPosition() {
         checkOpen();
         return globalSize() - 1;
+    }
+
+    @Override
+    public synchronized void retirePages(final String... pageIds) {
+        checkOpen();
+        Set<String> toRetire = Set.of(pageIds);
+        journal.removeIf(page -> toRetire.contains(page.id));
+        for (final String id : pageIds) {
+            pageById.remove(id);
+        }
     }
 
     @Override

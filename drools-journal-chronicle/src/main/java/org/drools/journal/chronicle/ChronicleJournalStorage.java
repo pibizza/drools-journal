@@ -15,8 +15,11 @@
  */
 package org.drools.journal.chronicle;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+
+import net.openhft.chronicle.core.io.IOTools;
 
 import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
@@ -205,6 +208,16 @@ public final class ChronicleJournalStorage implements JournalStorage {
             ChronicleDataWriteOps w = newDataWriter(mergedQueue);
             for (JournalRecord record : records) {
                 writeRecord(w, record);
+            }
+        }
+    }
+
+    @Override
+    public void retirePages(final String... pageIds) {
+        for (final String pageId : pageIds) {
+            Path pageDir = rootDir.resolve("page-" + pageId);
+            if (Files.exists(pageDir)) {
+                IOTools.shallowDeleteDirWithFiles(pageDir.toFile());
             }
         }
     }

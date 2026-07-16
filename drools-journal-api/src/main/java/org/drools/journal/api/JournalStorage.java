@@ -115,6 +115,15 @@ public interface JournalStorage extends AutoCloseable {
      */
     void safepoint();
 
+    /**
+     * Deletes the physical storage for the given pages. Called only for pages
+     * whose retirement is sealed (caller's responsibility). Idempotent —
+     * silently ignores page IDs that do not exist.
+     *
+     * @param pageIds IDs of the pages to retire
+     */
+    void retirePages(String... pageIds);
+
     // -------------------------------------------------------------------------
     // Read API
     // -------------------------------------------------------------------------

@@ -39,7 +39,7 @@ class CompactionCorrectnessTest {
         storage.retract(1L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
         List<JournalRecord> records = drainAll(storage);
         long prepareCount = records.stream()
@@ -56,7 +56,7 @@ class CompactionCorrectnessTest {
         storage.retract(1L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
         List<JournalRecord> records = drainAll(storage);
         CompactionPrepareRecord prepare = records.stream()
@@ -78,7 +78,7 @@ class CompactionCorrectnessTest {
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
         // Pm is a separate page in the raw journal (not inline between PREPARE and COMMIT).
         // Fact 1 (live) appears twice: once in P0, once in Pm.
@@ -105,7 +105,7 @@ class CompactionCorrectnessTest {
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         storage.safepoint(2); // seals the COMMIT — simulates next fireAllRules()
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
@@ -144,7 +144,7 @@ class CompactionCorrectnessTest {
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
         // compact() runs but crashes before the sealing safepoint
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         // No safepoint — COMMIT is unsealed, original pages remain canonical
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
@@ -162,7 +162,7 @@ class CompactionCorrectnessTest {
         storage.retract(1L);
         storage.safepoint(1);
 
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
         List<JournalRecord> records = drainAll(storage);
         long prepareCount = records.stream().filter(r -> r instanceof CompactionPrepareRecord).count();
@@ -181,7 +181,7 @@ class CompactionCorrectnessTest {
         storage.safepoint(0);
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
-        CompactionCoordinator.compact(storage, Set.of("0", "1"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
         storage.safepoint(2); // seals round 1
 
         // Round 2: fact 5 survives, facts 6-8 die
@@ -190,7 +190,7 @@ class CompactionCorrectnessTest {
         storage.safepoint(3);
         storage.retract(6L); storage.retract(7L); storage.retract(8L);
         storage.safepoint(4);
-        CompactionCoordinator.compact(storage, Set.of("3", "4"));
+        CompactionCoordinator.onDemand(storage).compact(Set.of("3", "4"));
         storage.safepoint(5); // seals round 2
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();

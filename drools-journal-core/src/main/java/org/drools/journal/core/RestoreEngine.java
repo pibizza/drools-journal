@@ -61,7 +61,7 @@ class RestoreEngine {
     ScanResult scan() {
         final Set<String> livePageIds;
         try (JournalScanner phase0 = journal.scan(0)) {
-            livePageIds = PageIndex.buildLivePageSet(phase0);
+            livePageIds = PageIndex.buildLivePageSet(phase0).livePages();
         }
 
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
