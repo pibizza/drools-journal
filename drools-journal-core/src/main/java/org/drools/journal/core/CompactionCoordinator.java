@@ -96,7 +96,7 @@ class CompactionCoordinator {
     static Map<String, long[]> scanLiveness(final JournalStorage storage) {
         final Set<String> livePageIds;
         try (JournalScanner phase0 = storage.scan(0)) {
-            livePageIds = PageIndex.buildLivePageSet(phase0);
+            livePageIds = PageIndex.buildLivePageSet(phase0).livePages();
         }
 
         final Map<String, long[]> liveness = new HashMap<>();

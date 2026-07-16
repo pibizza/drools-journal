@@ -29,12 +29,15 @@ import java.util.Set;
 
 final class PageIndex {
 
+    record PageIndexStatus(Set<String> livePages, Set<String> retiredPages) {}
+
     private PageIndex() {}
 
-    static Set<String> buildLivePageSet(final JournalScanner scanner) {
+    static PageIndexStatus buildLivePageSet(final JournalScanner scanner) {
         final List<String> pageIndex = new ArrayList<>();
         final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
         final List<String> currentIntervalPages = new ArrayList<>();
+        final Set<String> retiredPages = new HashSet<>();
         String lastPageId = null;
 
         while (scanner.hasNext()) {
@@ -50,6 +53,9 @@ final class PageIndex {
                 pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
             } else if (record instanceof SafepointRecord) {
                 for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
+                    for (final String replaced : e.getValue()) {
+                        retiredPages.add(replaced);
+                    }
                     spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
                 }
                 pendingCommits.clear();
@@ -58,7 +64,7 @@ final class PageIndex {
             }
         }
 
-        return new HashSet<>(pageIndex);
+        return new PageIndexStatus(new HashSet<>(pageIndex), retiredPages);
     }
 
     static void spliceIntoIndex(final List<String> pageIndex,
