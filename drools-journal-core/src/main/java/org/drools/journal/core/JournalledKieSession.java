@@ -32,9 +32,10 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
                                 final InternalKnowledgeBase kBase,
                                 final boolean initInitFactHandle,
                                 final SessionConfiguration config,
-                                final Environment environment) {
+                                final Environment environment,
+                                final JournalStorage storage) {
         super(id, kBase, initInitFactHandle, config, environment);
-        this.journal = (JournalStorage) environment.get(JournalledSessionFactory.JOURNAL_KEY);
+        this.journal = storage;
     }
 
     public JournalStorage getJournalStorage() {

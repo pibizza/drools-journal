@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.JournalStorage;
+
 import org.drools.base.RuleBase;
 import org.drools.core.SessionConfiguration;
 import org.drools.core.common.InternalWorkingMemory;
@@ -33,10 +35,11 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         if (environment == null || environment.get(JournalledSessionFactory.JOURNAL_KEY) == null) {
             return super.createStatefulSession(ruleBase, environment, sessionConfig, fromPool);
         }
+        JournalStorage storage = (JournalStorage) environment.get(JournalledSessionFactory.JOURNAL_KEY);
         InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
         if (fromPool || kbase.getSessionPool() == null) {
             JournalledKieSession session = new JournalledKieSession(
-                    kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment);
+                    kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment, storage);
             if (sessionConfig.isKeepReference()) {
                 kbase.addStatefulSession(session);
             }
