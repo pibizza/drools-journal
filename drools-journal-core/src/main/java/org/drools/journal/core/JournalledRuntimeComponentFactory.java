@@ -52,13 +52,10 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         DurableSessionOption opt = environment != null
                 ? (DurableSessionOption) environment.get(DurableSessionOption.PROPERTY_NAME)
                 : null;
-        if (opt != null) {
-            return createJournalledSession(ruleBase, environment, sessionConfig, fromPool, opt);
+        if (opt == null) {
+            return super.createStatefulSession(ruleBase, environment, sessionConfig, fromPool);
         }
-        if (environment != null && environment.get(JournalledSessionFactory.JOURNAL_KEY) != null) {
-            return createLegacySession(ruleBase, environment, sessionConfig, fromPool);
-        }
-        return super.createStatefulSession(ruleBase, environment, sessionConfig, fromPool);
+        return createJournalledSession(ruleBase, environment, sessionConfig, fromPool, opt);
     }
 
     private InternalWorkingMemory createJournalledSession(final RuleBase ruleBase,
@@ -100,23 +97,6 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         session.setCompactionCoordinator(coordinator);
 
         return session;
-    }
-
-    private InternalWorkingMemory createLegacySession(final RuleBase ruleBase,
-                                                      final Environment environment,
-                                                      final SessionConfiguration sessionConfig,
-                                                      final boolean fromPool) {
-        JournalStorage storage = (JournalStorage) environment.get(JournalledSessionFactory.JOURNAL_KEY);
-        InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
-        if (fromPool || kbase.getSessionPool() == null) {
-            JournalledKieSession session = new JournalledKieSession(
-                    kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment, storage);
-            if (sessionConfig.isKeepReference()) {
-                kbase.addStatefulSession(session);
-            }
-            return session;
-        }
-        return (InternalWorkingMemory) kbase.getSessionPool().newKieSession(sessionConfig);
     }
 
     private static boolean hasJournalGlobal(final KieBase kbase) {
