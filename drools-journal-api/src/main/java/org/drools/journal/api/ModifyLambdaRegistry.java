@@ -13,11 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.core;
+package org.drools.journal.api;
 
-public class JournalSchemaEvolutionException extends RuntimeException {
+import java.util.HashMap;
+import java.util.Map;
 
-    public JournalSchemaEvolutionException(final String lambdaClassRef) {
-        super("No ModifyLambda registered for: " + lambdaClassRef);
+public class ModifyLambdaRegistry {
+
+    private final Map<String, ModifyLambda> lambdas = new HashMap<>();
+
+    public void register(final String lambdaClassRef, final ModifyLambda lambda) {
+        lambdas.put(lambdaClassRef, lambda);
+    }
+
+    public ModifyLambda lookup(final String lambdaClassRef) {
+        ModifyLambda lambda = lambdas.get(lambdaClassRef);
+        if (lambda == null) {
+            throw new JournalSchemaEvolutionException(lambdaClassRef);
+        }
+        return lambda;
     }
 }

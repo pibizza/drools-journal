@@ -21,6 +21,8 @@ import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.ModifyLambda;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.RetractRecord;

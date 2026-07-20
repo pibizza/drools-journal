@@ -15,47 +15,38 @@
  */
 package org.drools.journal.api;
 
-import org.kie.api.runtime.conf.SingleValueKieSessionOption;
+import java.time.Duration;
 
 /**
- * {@code KieSessionConfiguration} option that activates journal-based session
- * durability.
+ * Configuration option that activates journal-based session durability.
+ * Passed to the session via {@link org.kie.api.runtime.Environment}.
  *
  * <p>Usage:
  * <pre>{@code
- * KieSessionConfiguration cfg = KieServices.get().newKieSessionConfiguration();
- * cfg.setOption(DurableSessionOption.newSession()
- *         .withObjectStorage(ObjectStorageMode.EMBED)
- *         .withPageRollStrategy(PageRollStrategies.safepointOnly())
- *         .withJournalStorage(myJournalStorage));
+ * Environment env = KieServices.get().newEnvironment();
+ * env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+ *         .withJournalStorage(myStorage)
+ *         .withCompactionInterval(Duration.ofSeconds(30)));
+ * KieSession session = kbase.newKieSession(null, env);
  * }</pre>
  *
  * <p>{@code journalStorage} is required; all other fields have defaults.
  */
-public class DurableSessionOption implements SingleValueKieSessionOption {
+public class DurableSessionOption {
 
     public static final String PROPERTY_NAME = "drools.journalsession";
 
     private ObjectStorageMode objectStorageMode = ObjectStorageMode.EMBED;
     private PageRollStrategy pageRollStrategy = PageRollStrategies.safepointOnly();
     private JournalStorage journalStorage;
+    private Duration compactionInterval = Duration.ofSeconds(60);
+    private ModifyLambdaRegistry modifyLambdaRegistry = new ModifyLambdaRegistry();
 
     private DurableSessionOption() {
     }
 
     public static DurableSessionOption newSession() {
         return new DurableSessionOption();
-    }
-
-    @Override
-    public String type() {
-        return PROPERTY_NAME;
-    }
-
-    @Override
-    @Deprecated
-    public String getPropertyName() {
-        return PROPERTY_NAME;
     }
 
     public ObjectStorageMode getObjectStorageMode() {
@@ -103,9 +94,34 @@ public class DurableSessionOption implements SingleValueKieSessionOption {
         return this;
     }
 
+    public Duration getCompactionInterval() {
+        return compactionInterval;
+    }
+
+    public DurableSessionOption withCompactionInterval(final Duration interval) {
+        if (interval == null) {
+            throw new IllegalArgumentException("Compaction interval must not be null");
+        }
+        this.compactionInterval = interval;
+        return this;
+    }
+
+    public ModifyLambdaRegistry getModifyLambdaRegistry() {
+        return modifyLambdaRegistry;
+    }
+
+    public DurableSessionOption withModifyLambdaRegistry(final ModifyLambdaRegistry registry) {
+        if (registry == null) {
+            throw new IllegalArgumentException("ModifyLambdaRegistry must not be null");
+        }
+        this.modifyLambdaRegistry = registry;
+        return this;
+    }
+
     @Override
     public String toString() {
         return "DurableSessionOption(objectStorageMode=" + objectStorageMode +
+                ", compactionInterval=" + compactionInterval +
                 ", journalStorage=" + journalStorage + ")";
     }
 }

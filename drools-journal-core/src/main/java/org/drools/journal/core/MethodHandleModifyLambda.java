@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.ModifyLambda;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;

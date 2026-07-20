@@ -15,13 +15,18 @@
  */
 package org.drools.journal.test;
 
+import java.time.Duration;
+
+import org.drools.journal.api.DurableSessionOption;
+import org.drools.journal.api.JournalStorage;
 import org.drools.journal.core.InMemoryJournalStorage;
-import org.drools.journal.core.JournalledKieSession;
-import org.drools.journal.core.JournalledSessionFactory;
 import org.drools.journal.core.EmbedStrategy;
 import org.junit.jupiter.api.Test;
 import org.kie.api.KieBase;
+import org.kie.api.KieServices;
 import org.kie.api.io.ResourceType;
+import org.kie.api.runtime.Environment;
+import org.kie.api.runtime.KieSession;
 import org.kie.api.runtime.rule.FactHandle;
 import org.kie.internal.utils.KieHelper;
 
@@ -48,12 +53,20 @@ class JournalledKieSessionRestoreTest {
             end
             """;
 
+    private static Environment journalEnv(final JournalStorage storage) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
     @Test
     void open_fromEmptyStorage_sessionIsEmpty() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             assertThat(session.getObjects()).isEmpty();
         }
     }
@@ -64,8 +77,8 @@ class JournalledKieSessionRestoreTest {
         storage.insert(1L, new EmbedStrategy().store(42, null));
         storage.safepoint();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             assertThat(session.getObjects()).singleElement().isEqualTo(42);
         }
     }
@@ -77,8 +90,8 @@ class JournalledKieSessionRestoreTest {
         storage.ruleMatch(1L, "org.drools.journal.test", "ProcessFact", new long[]{1L});
         storage.safepoint();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             assertThat(session.fireAllRules()).isZero();
         }
     }
@@ -90,8 +103,8 @@ class JournalledKieSessionRestoreTest {
         storage.retract(1L);
         storage.safepoint();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             assertThat(session.getObjects()).isEmpty();
         }
     }
@@ -105,16 +118,13 @@ class JournalledKieSessionRestoreTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
 
-        // Session 1: insert a fact and fire
-        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session1 = kbase.newKieSession(null, journalEnv(storage))) {
             session1.insert(42);
             session1.fireAllRules();
         }
 
-        // Session 2: open on the same storage — should restore working memory
-        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session2.getObjects()).singleElement().isEqualTo(42);
-            // Rule already fired for this fact — should not fire again
             assertThat(session2.fireAllRules()).isZero();
         }
     }
@@ -124,15 +134,13 @@ class JournalledKieSessionRestoreTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
 
-        // Session 1: insert, retract, fire
-        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session1 = kbase.newKieSession(null, journalEnv(storage))) {
             FactHandle handle = session1.insert(42);
             session1.delete(handle);
             session1.fireAllRules();
         }
 
-        // Session 2: working memory should be empty
-        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session2.getObjects()).isEmpty();
             assertThat(session2.fireAllRules()).isZero();
         }
@@ -143,21 +151,18 @@ class JournalledKieSessionRestoreTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
 
-        // Session 1: insert fact 1, fire
-        try (JournalledKieSession session1 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session1 = kbase.newKieSession(null, journalEnv(storage))) {
             session1.insert(1);
             session1.fireAllRules();
         }
 
-        // Session 2: restore, insert fact 2, fire
-        try (JournalledKieSession session2 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session2.getObjects()).singleElement().isEqualTo(1);
             session2.insert(2);
             session2.fireAllRules();
         }
 
-        // Session 3: both facts present, neither rule fires again
-        try (JournalledKieSession session3 = JournalledSessionFactory.open(kbase, storage)) {
+        try (KieSession session3 = kbase.newKieSession(null, journalEnv(storage))) {
             @SuppressWarnings("unchecked")
             java.util.Collection<Object> objects3 = (java.util.Collection<Object>) session3.getObjects();
             assertThat(objects3).containsExactlyInAnyOrder(1, 2);
@@ -173,8 +178,8 @@ class JournalledKieSessionRestoreTest {
         storage.insertLogical(2L, new EmbedStrategy().store("hello", null), 1L);
         storage.safepoint();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             Object integer = session.getObjects(o -> o instanceof Integer).iterator().next();
             session.delete(session.getFactHandle(integer));
             session.fireAllRules();

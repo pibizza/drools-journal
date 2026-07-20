@@ -18,18 +18,21 @@ package org.drools.journal.test;
 import java.nio.file.Path;
 import java.time.Duration;
 
+import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
+import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.chronicle.ChronicleJournalStorage;
 import org.drools.journal.core.JournalDrlPrecompiler;
-import org.drools.journal.core.JournalledKieSession;
-import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.core.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.kie.api.KieBase;
+import org.kie.api.KieServices;
 import org.kie.api.io.ResourceType;
+import org.kie.api.runtime.Environment;
+import org.kie.api.runtime.KieSession;
 import org.kie.internal.utils.KieHelper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,20 +61,38 @@ class ChronicleJournalledKieSessionIT {
     @TempDir
     Path tempDir;
 
+    private static Environment journalEnv(final JournalStorage storage) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
+    private static Environment journalEnv(final JournalStorage storage,
+                                          final ModifyLambdaRegistry registry) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withModifyLambdaRegistry(registry)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
     @Test
     void openFireDispose_thenReopen_restoresFact_andRuleDoesNotRefire() {
         final KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
         final String journalPath = tempDir.resolve("chronicle-journal").toString();
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage))) {
             session.insert(42);
             final int fired = session.fireAllRules();
             assertThat(fired).isEqualTo(1);
         }
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session.getObjects()).singleElement().isEqualTo(42);
             final int fired = session.fireAllRules();
             assertThat(fired).isEqualTo(0);
@@ -84,20 +105,20 @@ class ChronicleJournalledKieSessionIT {
         final String journalPath = tempDir.resolve("multi-session").toString();
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage))) {
             session.insert(1);
             session.fireAllRules();
         }
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session.getObjects()).singleElement().isEqualTo(1);
             session.insert(2);
             session.fireAllRules();
         }
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(kbase, storage, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage))) {
             final java.util.Collection<Object> objects = (java.util.Collection<Object>) session.getObjects();
             assertThat(objects).containsExactlyInAnyOrder(1, 2);
         }
@@ -126,8 +147,7 @@ class ChronicleJournalledKieSessionIT {
         String journalPath = tempDir.resolve("modify-write").toString();
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(
-                     kbase, storage, registry, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage, registry))) {
             session.insert(new Ticket("open"));
             session.fireAllRules();
 
@@ -153,8 +173,7 @@ class ChronicleJournalledKieSessionIT {
         String journalPath = tempDir.resolve("modify-restore").toString();
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(
-                     kbase, storage, registry, Duration.ZERO)) {
+             KieSession session = kbase.newKieSession(null, journalEnv(storage, registry))) {
             session.insert(new Ticket("open"));
             session.fireAllRules();
         }
@@ -165,8 +184,7 @@ class ChronicleJournalledKieSessionIT {
         KieBase freshKbase = new KieHelper().addContent(freshRewritten, ResourceType.DRL).build();
 
         try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath);
-             JournalledKieSession session = JournalledSessionFactory.open(
-                     freshKbase, storage, freshRegistry, Duration.ZERO)) {
+             KieSession session = freshKbase.newKieSession(null, journalEnv(storage, freshRegistry))) {
             Ticket restored = (Ticket) session.getObjects().iterator().next();
             assertThat(restored.getStatus()).isEqualTo("closed");
         }

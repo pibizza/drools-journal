@@ -20,6 +20,7 @@ import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

@@ -13,9 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.core;
+package org.drools.journal.api;
 
-@FunctionalInterface
-public interface ModifyLambda {
-    void apply(Object fact, Object[] parameters);
+public class JournalSchemaEvolutionException extends RuntimeException {
+
+    public JournalSchemaEvolutionException(final String lambdaClassRef) {
+        super("No ModifyLambda registered for: " + lambdaClassRef);
+    }
 }
