@@ -18,13 +18,17 @@ package org.drools.journal.test;
 import java.io.Serializable;
 import java.time.Duration;
 
+import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalDrlPrecompiler;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
 import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
+import org.kie.api.KieServices;
 import org.kie.api.io.ResourceType;
+import org.kie.api.runtime.Environment;
+import org.kie.api.runtime.KieSession;
 import org.kie.api.runtime.rule.FactHandle;
 import org.kie.internal.utils.KieHelper;
 
@@ -195,6 +199,27 @@ class JournalledKieSessionTest {
                 INSERT  id=1  Ticket(open)
                 MODIFY  id=1  lambda=Rule_CloseTicket_modify_0
                 MATCH  id=1  pkg=org.drools.journal.test  rule=CloseTicket  facts=[1]
+                SAFEPOINT  seq=0
+                """);
+    }
+
+    @Test
+    void newApi_insertAndFire_producesInsertMatchAndSafepoint() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withCompactionInterval(Duration.ZERO));
+
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, env)) {
+            session.insert(42);
+            session.fireAllRules();
+        }
+
+        assertThat(storage).hasToString("""
+                INSERT  id=1  Integer(42)
+                MATCH  id=1  pkg=org.drools.journal.test  rule=ProcessFact  facts=[1]
                 SAFEPOINT  seq=0
                 """);
     }
