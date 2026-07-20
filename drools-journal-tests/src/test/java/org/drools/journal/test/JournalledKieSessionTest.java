@@ -19,11 +19,10 @@ import java.io.Serializable;
 import java.time.Duration;
 
 import org.drools.journal.api.DurableSessionOption;
+import org.drools.journal.api.JournalStorage;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalDrlPrecompiler;
-import org.drools.journal.core.JournalledKieSession;
-import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 import org.kie.api.KieServices;
 import org.kie.api.io.ResourceType;
@@ -65,12 +64,30 @@ class JournalledKieSessionTest {
             end
             """;
 
+    private static Environment journalEnv(final JournalStorage storage) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
+    private static Environment journalEnv(final JournalStorage storage,
+                                          final ModifyLambdaRegistry registry) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withModifyLambdaRegistry(registry)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
     @Test
     void insertAndFire_singleFact_producesInsertMatchAndSafepoint() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             session.insert(42);
             session.fireAllRules();
         }
@@ -86,8 +103,8 @@ class JournalledKieSessionTest {
     void retract_insertedFact_producesRetractRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             FactHandle handle = session.insert(42);
             session.delete(handle);
         }
@@ -102,8 +119,8 @@ class JournalledKieSessionTest {
     void update_insertedFact_producesInsertSnapshotWithSameHandleId() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             FactHandle handle = session.insert(42);
             session.update(handle, 99);
         }
@@ -118,8 +135,8 @@ class JournalledKieSessionTest {
     void fireAllRules_multipleMatches_matchIdsAreMonotonicallyIncreasing() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             session.insert(1);
             session.insert(2);
             session.fireAllRules();
@@ -138,9 +155,8 @@ class JournalledKieSessionTest {
     void open_withDurationZero_disposeCompletesCleanly() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(RULE, ResourceType.DRL).build(), storage,
-                Duration.ZERO);
+        KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage));
         session.dispose();
 
         boolean compactorThreadAlive = Thread.getAllStackTraces().keySet().stream()
@@ -152,8 +168,8 @@ class JournalledKieSessionTest {
     void insertLogical_duringRuleFiring_recordsLogicalFlagAndJustifyingMatchId() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build(), storage)) {
+        try (KieSession session = new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage))) {
             session.insert(42);
             session.fireAllRules();
         }
@@ -188,9 +204,8 @@ class JournalledKieSessionTest {
 
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
-        try (JournalledKieSession session = JournalledSessionFactory.open(
-                new KieHelper().addContent(rewritten, ResourceType.DRL).build(),
-                storage, registry, Duration.ZERO)) {
+        try (KieSession session = new KieHelper().addContent(rewritten, ResourceType.DRL)
+                .build().newKieSession(null, journalEnv(storage, registry))) {
             session.insert(new Ticket("open"));
             session.fireAllRules();
         }
@@ -199,27 +214,6 @@ class JournalledKieSessionTest {
                 INSERT  id=1  Ticket(open)
                 MODIFY  id=1  lambda=Rule_CloseTicket_modify_0
                 MATCH  id=1  pkg=org.drools.journal.test  rule=CloseTicket  facts=[1]
-                SAFEPOINT  seq=0
-                """);
-    }
-
-    @Test
-    void newApi_insertAndFire_producesInsertMatchAndSafepoint() {
-        InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        Environment env = KieServices.get().newEnvironment();
-        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
-                .withJournalStorage(storage)
-                .withCompactionInterval(Duration.ZERO));
-
-        try (KieSession session = new KieHelper().addContent(RULE, ResourceType.DRL)
-                .build().newKieSession(null, env)) {
-            session.insert(42);
-            session.fireAllRules();
-        }
-
-        assertThat(storage).hasToString("""
-                INSERT  id=1  Integer(42)
-                MATCH  id=1  pkg=org.drools.journal.test  rule=ProcessFact  facts=[1]
                 SAFEPOINT  seq=0
                 """);
     }

@@ -16,12 +16,9 @@
 package org.drools.journal.test;
 
 import java.nio.file.Path;
-import java.time.Duration;
 
 import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.chronicle.ChronicleJournalStorage;
-import org.drools.journal.core.JournalledKieSession;
-import org.drools.journal.core.JournalledSessionFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.kie.api.KieBase;
