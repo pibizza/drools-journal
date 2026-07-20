@@ -13,24 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.drools.journal.core;
+package org.drools.journal.api;
 
-import java.util.HashMap;
-import java.util.Map;
-
-public class ModifyLambdaRegistry {
-
-    private final Map<String, ModifyLambda> lambdas = new HashMap<>();
-
-    public void register(final String lambdaClassRef, final ModifyLambda lambda) {
-        lambdas.put(lambdaClassRef, lambda);
-    }
-
-    public ModifyLambda lookup(final String lambdaClassRef) {
-        ModifyLambda lambda = lambdas.get(lambdaClassRef);
-        if (lambda == null) {
-            throw new JournalSchemaEvolutionException(lambdaClassRef);
-        }
-        return lambda;
-    }
+@FunctionalInterface
+public interface ModifyLambda {
+    void apply(Object fact, Object[] parameters);
 }

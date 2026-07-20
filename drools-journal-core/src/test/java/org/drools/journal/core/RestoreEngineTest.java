@@ -16,6 +16,8 @@
 package org.drools.journal.core;
 
 import org.drools.journal.api.InsertRecord;
+import org.drools.journal.api.JournalSchemaEvolutionException;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

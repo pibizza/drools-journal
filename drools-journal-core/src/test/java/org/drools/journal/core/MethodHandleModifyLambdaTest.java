@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.ModifyLambda;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

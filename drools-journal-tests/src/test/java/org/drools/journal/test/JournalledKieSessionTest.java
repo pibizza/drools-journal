@@ -22,7 +22,7 @@ import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.JournalDrlPrecompiler;
 import org.drools.journal.core.JournalledKieSession;
 import org.drools.journal.core.JournalledSessionFactory;
-import org.drools.journal.core.ModifyLambdaRegistry;
+import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.rule.FactHandle;

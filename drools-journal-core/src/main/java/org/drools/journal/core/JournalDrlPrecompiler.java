@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.ModifyLambdaRegistry;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
