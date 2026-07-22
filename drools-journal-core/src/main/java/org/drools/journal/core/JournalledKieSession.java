@@ -50,6 +50,12 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
         this.compactionCoordinator = coordinator;
     }
 
+    public void compactNow() {
+        if (compactionCoordinator != null) {
+            compactionCoordinator.runCycle();
+        }
+    }
+
     @Override
     public int fireAllRules() {
         int fired = (replayFilter != null)
