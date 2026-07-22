@@ -24,7 +24,7 @@ import org.kie.internal.utils.KieHelper;
 public enum DrlProvider {
 
     SIMPLE_INSERT("""
-            package org.drools.journal.benchmarks
+            package org.drools.journal.benchmarks;
             rule "ProcessInteger"
             when
                 $i: Integer()
@@ -33,8 +33,8 @@ public enum DrlProvider {
             """),
 
     MODIFY_STATUS("""
-            package org.drools.journal.benchmarks
-            import org.drools.journal.benchmarks.StockItem
+            package org.drools.journal.benchmarks;
+            import org.drools.journal.benchmarks.StockItem;
             rule "ActivateItem"
             when
                 $item : StockItem(status == "pending")
