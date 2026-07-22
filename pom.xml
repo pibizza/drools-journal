@@ -44,6 +44,7 @@
     <module>drools-journal-chronicle</module>
     <module>drools-journal-aeron</module>
     <module>drools-journal-tests</module>
+    <module>drools-journal-benchmarks</module>
   </modules>
 
   <properties>

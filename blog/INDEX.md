@@ -33,3 +33,4 @@
 | [2026-07-15-PaoloB01-precompiler-that-rewrites-rules.md](2026-07-15-PaoloB01-precompiler-that-rewrites-rules.md) | 2026-07-15 | The Precompiler That Rewrites Rules |
 | [2026-07-16-PaoloB01-dead-pages-finally-die.md](2026-07-16-PaoloB01-dead-pages-finally-die.md) | 2026-07-16 | Dead Pages Finally Die |
 | [2026-07-20-PaoloB01-the-factory-that-had-to-go.md](2026-07-20-PaoloB01-the-factory-that-had-to-go.md) | 2026-07-20 | The Factory That Had to Go |
+| [2026-07-21-PaoloB01-measuring-what-we-claim.md](2026-07-21-PaoloB01-measuring-what-we-claim.md) | 2026-07-21 | Measuring what we claim |
