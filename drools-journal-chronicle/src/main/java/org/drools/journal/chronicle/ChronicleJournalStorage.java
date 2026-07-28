@@ -180,6 +180,9 @@ public final class ChronicleJournalStorage implements JournalStorage {
 
     @Override
     public void safepoint() {
+        if (currentRecordCount == 0) {
+            return;
+        }
         long seqNo = safepointSequenceNo++;
         long ts = System.currentTimeMillis();
         sessionWriter.safepoint(seqNo, ts);
