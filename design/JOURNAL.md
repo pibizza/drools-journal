@@ -1,5 +1,17 @@
 # Design Journal — epic-compaction-coordinator
 
+### 2026-07-28 · §Implementation Status
+
+The JMH benchmark suite was reworked to use realistic Drools workloads
+rather than synthetic fact/rule combinations. Benchmarks now port three
+scenarios from the upstream drools session benchmark suite (InsertOnly,
+InsertNoFire, FireOnlyWithJoins) and compare a plain KieSession (PLAIN)
+against a journalled session (JOURNAL) on the same workload.
+AbstractSessionBenchmark wires DurableSessionOption + ChronicleJournalStorage
+for the JOURNAL mode. Initial runs show ~190µs flat overhead per fireAllRules()
+call regardless of rule count, pointing to safepoint write cost as the
+dominant factor — under investigation.
+
 ### 2026-07-13 · §Storage Backends
 
 Queue-per-page architecture implemented for Chronicle (#42). Each logical
