@@ -27,8 +27,8 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
-@Warmup(iterations = 5)
-@Measurement(iterations = 10)
+@Warmup(iterations = 3000)
+@Measurement(iterations = 1000)
 public class InsertOnlyBenchmark extends AbstractSessionBenchmark {
 
     @Param({"48", "192"})
