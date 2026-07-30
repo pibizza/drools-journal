@@ -17,6 +17,8 @@ package org.drools.journal.test;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.api.JournalRecord;
@@ -187,6 +189,48 @@ class ChronicleJournalledKieSessionIT {
              KieSession session = freshKbase.newKieSession(null, journalEnv(storage, freshRegistry))) {
             Ticket restored = (Ticket) session.getObjects().iterator().next();
             assertThat(restored.getStatus()).isEqualTo("closed");
+        }
+    }
+
+    @Test
+    void insertAndFire_externalRefMode_restoresFactThroughLoader() {
+        Map<String, Object> externalStore = new ConcurrentHashMap<>();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+        String journalPath = tempDir.resolve("external-ref").toString();
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            Environment env = KieServices.get().newEnvironment();
+            env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                    .withJournalStorage(storage)
+                    .withCompactionInterval(Duration.ZERO)
+                    .withExternalRefStorage(
+                            fact -> {
+                                String key = "ext-" + fact;
+                                externalStore.put(key, fact);
+                                return key;
+                            },
+                            ref -> externalStore.get(ref.dbKey())));
+            try (KieSession session = kbase.newKieSession(null, env)) {
+                session.insert(42);
+                session.fireAllRules();
+            }
+        }
+
+        assertThat(externalStore).containsEntry("ext-42", 42);
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            Environment env = KieServices.get().newEnvironment();
+            env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                    .withJournalStorage(storage)
+                    .withCompactionInterval(Duration.ZERO)
+                    .withExternalRefStorage(
+                            fact -> "ext-" + fact,
+                            ref -> externalStore.get(ref.dbKey())));
+            try (KieSession session = kbase.newKieSession(null, env)) {
+                assertThat(session.getObjects()).singleElement().isEqualTo(42);
+                int fired = session.fireAllRules();
+                assertThat(fired).isEqualTo(0);
+            }
         }
     }
 }

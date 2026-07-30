@@ -33,9 +33,12 @@ import org.kie.api.runtime.rule.FactHandle;
 public final class ExternalRefStrategy implements ObjectStorageStrategy {
 
     private final Function<Object, String> keySupplier;
+    private final Function<ExternalRef, Object> loader;
 
-    public ExternalRefStrategy(final Function<Object, String> keySupplier) {
+    public ExternalRefStrategy(final Function<Object, String> keySupplier,
+                               final Function<ExternalRef, Object> loader) {
         this.keySupplier = keySupplier;
+        this.loader = loader;
     }
 
     @Override
@@ -45,7 +48,13 @@ public final class ExternalRefStrategy implements ObjectStorageStrategy {
 
     @Override
     public Object load(final Payload payload) {
-        throw new UnsupportedOperationException(
-                "ExternalRefStrategy cannot load — implement a custom load() for your external store");
+        ExternalRef ref = (ExternalRef) payload;
+        Object fact = loader.apply(ref);
+        if (fact == null) {
+            throw new IllegalStateException(
+                    "External store returned null for key '" + ref.dbKey()
+                            + "' (type " + ref.typeName() + ")");
+        }
+        return fact;
     }
 }

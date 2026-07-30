@@ -18,6 +18,8 @@ package org.drools.journal.core;
 import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.ModifyLambdaRegistry;
+import org.drools.journal.api.ObjectStorageMode;
+import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.RuleMatchRecord;
 
 import org.drools.base.RuleBase;
@@ -64,6 +66,7 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
                                                           final boolean fromPool,
                                                           final DurableSessionOption opt) {
         JournalStorage storage = opt.getJournalStorage();
+        ObjectStorageStrategy strategy = buildStrategy(opt);
         InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
 
         JournalledKieSession session;
@@ -78,11 +81,11 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         }
 
         if (!storage.isEmpty()) {
-            restore(session, storage, opt.getModifyLambdaRegistry());
+            restore(session, storage, opt.getModifyLambdaRegistry(), strategy);
         }
 
         JournallingRuntimeEventListener listener =
-                new JournallingRuntimeEventListener(storage, new EmbedStrategy());
+                new JournallingRuntimeEventListener(storage, strategy);
         session.addEventListener((org.kie.api.event.rule.RuleRuntimeEventListener) listener);
         session.addEventListener((org.kie.api.event.rule.AgendaEventListener) listener);
         if (hasJournalGlobal(kbase)) {
@@ -110,10 +113,18 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         return false;
     }
 
+    private static ObjectStorageStrategy buildStrategy(final DurableSessionOption opt) {
+        if (opt.getObjectStorageMode() == ObjectStorageMode.EXTERNAL_REF) {
+            return new ExternalRefStrategy(opt.getExternalRefKeySupplier(), opt.getExternalRefLoader());
+        }
+        return new EmbedStrategy();
+    }
+
     private static void restore(final JournalledKieSession session,
                                 final JournalStorage storage,
-                                final ModifyLambdaRegistry registry) {
-        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, registry).scan();
+                                final ModifyLambdaRegistry registry,
+                                final ObjectStorageStrategy strategy) {
+        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, registry, strategy).scan();
         Map<Long, FactHandle> oldToNew = insertNonLogicalFacts(session, scanResult);
         ReplayFilter replayFilter = buildReplayFilter(scanResult, oldToNew);
         session.fireAllRules(replayFilter);
