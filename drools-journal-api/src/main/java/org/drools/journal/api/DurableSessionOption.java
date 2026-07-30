@@ -16,6 +16,7 @@
 package org.drools.journal.api;
 
 import java.time.Duration;
+import java.util.function.Function;
 
 /**
  * Configuration option that activates journal-based session durability.
@@ -41,6 +42,8 @@ public class DurableSessionOption {
     private JournalStorage journalStorage;
     private Duration compactionInterval = Duration.ofSeconds(60);
     private ModifyLambdaRegistry modifyLambdaRegistry = new ModifyLambdaRegistry();
+    private Function<Object, String> externalRefKeySupplier;
+    private Function<ExternalRef, Object> externalRefLoader;
 
     private DurableSessionOption() {
     }
@@ -70,12 +73,26 @@ public class DurableSessionOption {
         return journalStorage;
     }
 
-    public DurableSessionOption withObjectStorage(final ObjectStorageMode mode) {
-        if (mode == null) {
-            throw new IllegalArgumentException("ObjectStorageMode must not be null");
+    public DurableSessionOption withExternalRefStorage(final Function<Object, String> keySupplier,
+                                                       final Function<ExternalRef, Object> loader) {
+        if (keySupplier == null) {
+            throw new IllegalArgumentException("keySupplier must not be null");
         }
-        this.objectStorageMode = mode;
+        if (loader == null) {
+            throw new IllegalArgumentException("loader must not be null");
+        }
+        this.objectStorageMode = ObjectStorageMode.EXTERNAL_REF;
+        this.externalRefKeySupplier = keySupplier;
+        this.externalRefLoader = loader;
         return this;
+    }
+
+    public Function<Object, String> getExternalRefKeySupplier() {
+        return externalRefKeySupplier;
+    }
+
+    public Function<ExternalRef, Object> getExternalRefLoader() {
+        return externalRefLoader;
     }
 
     public DurableSessionOption withPageRollStrategy(final PageRollStrategy strategy) {

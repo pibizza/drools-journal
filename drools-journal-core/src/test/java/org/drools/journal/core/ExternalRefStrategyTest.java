@@ -15,6 +15,8 @@
  */
 package org.drools.journal.core;
 
+import java.util.Map;
+
 import org.drools.journal.api.ExternalRef;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +25,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ExternalRefStrategyTest {
 
-    private final ExternalRefStrategy strategy = new ExternalRefStrategy(fact -> "key-" + fact);
+    private final Map<String, Object> externalStore = Map.of("key-42", 42);
+    private final ExternalRefStrategy strategy = new ExternalRefStrategy(
+            fact -> "key-" + fact,
+            ref -> externalStore.get(ref.dbKey()));
 
     @Test
     void store_producesExternalRefWithCorrectTypeNameAndKey() {
@@ -34,10 +39,19 @@ class ExternalRefStrategyTest {
     }
 
     @Test
-    void load_throwsUnsupportedOperation() {
-        ExternalRef ref = new ExternalRef("com.example.Fact", "key-123");
+    void load_throwsWhenLoaderReturnsNull() {
+        ExternalRef ref = new ExternalRef("com.example.Missing", "no-such-key");
 
         assertThatThrownBy(() -> strategy.load(ref))
-                .isInstanceOf(UnsupportedOperationException.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no-such-key");
+    }
+
+    @Test
+    void load_reconstructsFactFromExternalRef() {
+        ExternalRef ref = (ExternalRef) strategy.store(42, null);
+        Object loaded = strategy.load(ref);
+
+        assertThat(loaded).isEqualTo(42);
     }
 }
