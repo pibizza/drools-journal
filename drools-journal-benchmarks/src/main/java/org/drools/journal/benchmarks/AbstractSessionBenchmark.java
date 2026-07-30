@@ -20,22 +20,30 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.concurrent.TimeUnit;
 
 import org.drools.journal.api.DurableSessionOption;
-import org.drools.journal.api.ModifyLambdaRegistry;
 import org.drools.journal.chronicle.ChronicleJournalStorage;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
+import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.Environment;
 import org.kie.api.runtime.KieSession;
+import org.kie.internal.utils.KieHelper;
+import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 
 @State(Scope.Thread)
+@BenchmarkMode(Mode.SingleShotTime)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
 @Fork(value = 1, jvmArgsAppend = {
         "--add-exports=java.base/jdk.internal.ref=ALL-UNNAMED",
         "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
@@ -47,39 +55,41 @@ import org.openjdk.jmh.annotations.TearDown;
         "--add-opens=java.base/java.io=ALL-UNNAMED",
         "--add-opens=java.base/java.util=ALL-UNNAMED"
 })
-public abstract class AbstractJournalBenchmark {
+public abstract class AbstractSessionBenchmark {
 
-    protected KieBase kbase;
-    protected ModifyLambdaRegistry registry;
-    protected ChronicleJournalStorage storage;
-    protected KieSession session;
-    protected Path journalDir;
+    @Param({"PLAIN", "JOURNAL"})
+    protected String mode;
 
-    protected abstract DrlProvider drlProvider();
+    protected KieBase kieBase;
+    protected KieSession kieSession;
 
-    @Setup(Level.Trial)
-    public void buildKieBase() {
-        registry = new ModifyLambdaRegistry();
-        kbase = drlProvider().kbase(registry);
+    private ChronicleJournalStorage storage;
+    private Path journalDir;
+
+    protected void buildKieBase(final String drl) {
+        kieBase = new KieHelper().addContent(drl, ResourceType.DRL).build();
     }
 
     @Setup(Level.Iteration)
     public void openSession() throws IOException {
-        journalDir = Files.createTempDirectory("jmh-journal-");
-        storage = ChronicleJournalStorage.atPath(journalDir.toString());
-        Environment env = KieServices.get().newEnvironment();
-        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
-                .withJournalStorage(storage)
-                .withModifyLambdaRegistry(registry)
-                .withCompactionInterval(Duration.ZERO));
-        session = kbase.newKieSession(null, env);
+        if ("JOURNAL".equals(mode)) {
+            journalDir = Files.createTempDirectory("jmh-journal-");
+            storage = ChronicleJournalStorage.atPath(journalDir.toString());
+            Environment env = KieServices.get().newEnvironment();
+            env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                    .withJournalStorage(storage)
+                    .withCompactionInterval(Duration.ZERO));
+            kieSession = kieBase.newKieSession(null, env);
+        } else {
+            kieSession = kieBase.newKieSession();
+        }
     }
 
     @TearDown(Level.Iteration)
     public void closeSession() throws IOException {
-        if (session != null) {
-            session.dispose();
-            session = null;
+        if (kieSession != null) {
+            kieSession.dispose();
+            kieSession = null;
         }
         if (storage != null) {
             storage.close();
@@ -91,7 +101,7 @@ public abstract class AbstractJournalBenchmark {
         }
     }
 
-    private static void deleteRecursively(Path dir) throws IOException {
+    private static void deleteRecursively(final Path dir) throws IOException {
         if (Files.exists(dir)) {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {

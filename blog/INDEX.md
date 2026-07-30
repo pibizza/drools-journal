@@ -34,3 +34,6 @@
 | [2026-07-16-PaoloB01-dead-pages-finally-die.md](2026-07-16-PaoloB01-dead-pages-finally-die.md) | 2026-07-16 | Dead Pages Finally Die |
 | [2026-07-20-PaoloB01-the-factory-that-had-to-go.md](2026-07-20-PaoloB01-the-factory-that-had-to-go.md) | 2026-07-20 | The Factory That Had to Go |
 | [2026-07-21-PaoloB01-measuring-what-we-claim.md](2026-07-21-PaoloB01-measuring-what-we-claim.md) | 2026-07-21 | Measuring what we claim |
+| [2026-07-22-PaoloB01-six-benchmarks-and-a-semicolon.md](2026-07-22-PaoloB01-six-benchmarks-and-a-semicolon.md) | 2026-07-22 | Six benchmarks and a semicolon |
+| [2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md](2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md) | 2026-07-29 | Chronicle Journal vs H2MVStore Reliability — Benchmark Comparison |
+| [2026-07-29-PaoloB02-fire-wasnt-free.md](2026-07-29-PaoloB02-fire-wasnt-free.md) | 2026-07-29 | The Fire Wasn't Free |
