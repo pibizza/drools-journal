@@ -37,3 +37,4 @@
 | [2026-07-22-PaoloB01-six-benchmarks-and-a-semicolon.md](2026-07-22-PaoloB01-six-benchmarks-and-a-semicolon.md) | 2026-07-22 | Six benchmarks and a semicolon |
 | [2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md](2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md) | 2026-07-29 | Chronicle Journal vs H2MVStore Reliability — Benchmark Comparison |
 | [2026-07-29-PaoloB02-fire-wasnt-free.md](2026-07-29-PaoloB02-fire-wasnt-free.md) | 2026-07-29 | The Fire Wasn't Free |
+| [2026-07-30-PaoloB01-the-store-that-wasnt-there.md](2026-07-30-PaoloB01-the-store-that-wasnt-there.md) | 2026-07-30 | The Store That Wasn't There |
