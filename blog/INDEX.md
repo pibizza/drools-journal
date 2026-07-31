@@ -38,3 +38,4 @@
 | [2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md](2026-07-29-PaoloB01-chronicle-vs-h2mvstore-benchmark-comparison.md) | 2026-07-29 | Chronicle Journal vs H2MVStore Reliability — Benchmark Comparison |
 | [2026-07-29-PaoloB02-fire-wasnt-free.md](2026-07-29-PaoloB02-fire-wasnt-free.md) | 2026-07-29 | The Fire Wasn't Free |
 | [2026-07-30-PaoloB01-the-store-that-wasnt-there.md](2026-07-30-PaoloB01-the-store-that-wasnt-there.md) | 2026-07-30 | The Store That Wasn't There |
+| [2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md](2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md) | 2026-07-31 | The Page That Wasn't Sealed |
