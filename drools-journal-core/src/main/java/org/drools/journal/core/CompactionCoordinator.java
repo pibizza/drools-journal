@@ -39,7 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-class CompactionCoordinator {
+public class CompactionCoordinator {
 
     static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(60);
 
@@ -52,7 +52,7 @@ class CompactionCoordinator {
         this.interval = interval;
     }
 
-    static CompactionCoordinator onDemand(final JournalStorage storage) {
+    public static CompactionCoordinator onDemand(final JournalStorage storage) {
         return new CompactionCoordinator(storage, Duration.ZERO);
     }
 
@@ -182,7 +182,7 @@ class CompactionCoordinator {
         return (double) counts[0] / counts[1] < 0.30;
     }
 
-    void compact(final Set<String> pageIds) {
+    public void compact(final Set<String> pageIds) {
         if (pageIds.isEmpty()) {
             return;
         }
@@ -232,7 +232,9 @@ class CompactionCoordinator {
         }
         liveInserts.keySet().removeAll(retractedIds);
 
-        storage.writeMergedPage(mergedPageId, new ArrayList<>(liveInserts.values()));
+        List<JournalRecord> mergedRecords = new ArrayList<>(liveInserts.values());
+        mergedRecords.add(new SafepointRecord(-1, 0L));
+        storage.writeMergedPage(mergedPageId, mergedRecords);
 
         // Phase 3 — COMMIT
         storage.compactionCommit(mergedPageId, replacedPageIds);
