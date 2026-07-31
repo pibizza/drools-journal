@@ -284,7 +284,7 @@ Four-step atomic protocol — writer never pauses:
 
 ```
 Step 1 — PREPARE:  append CompactionPrepareRecord { Pm_id, replacedPageIds: [P1, P2] }
-Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live InsertRecords only)
+Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live InsertRecords + trailing SafepointRecord)
 Step 3 — COMMIT:   append CompactionCommitRecord { Pm_id, replacedPageIds: [P1, P2] }
 Step 4 — RETIRE:   lazily delete P1, P2 (correctness does not depend on this completing)
 ```

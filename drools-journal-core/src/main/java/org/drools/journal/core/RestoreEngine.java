@@ -36,11 +36,11 @@ import java.util.Map;
 import java.util.Set;
 
 // NOT thread-safe — Drools sessions fire on a single thread
-class RestoreEngine {
+public class RestoreEngine {
 
-    record PendingTmsLink(long factHandleId, long justifyingRuleMatchId) {}
+    public record PendingTmsLink(long factHandleId, long justifyingRuleMatchId) {}
 
-    record ScanResult(Map<Long, Object> survivingFacts,
+    public record ScanResult(Map<Long, Object> survivingFacts,
                       List<RuleMatchRecord> firedMatches,
                       List<PendingTmsLink> pendingTmsLinks,
                       Map<Long, RuleMatchRecord> firedMatchesById) {}
@@ -49,7 +49,7 @@ class RestoreEngine {
     private final ModifyLambdaRegistry lambdaRegistry;
     private final ObjectStorageStrategy strategy;
 
-    RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
+    public RestoreEngine(final JournalStorage journal, final ModifyLambdaRegistry lambdaRegistry) {
         this(journal, lambdaRegistry, new EmbedStrategy());
     }
 
@@ -60,7 +60,7 @@ class RestoreEngine {
         this.strategy = strategy;
     }
 
-    ScanResult scan() {
+    public ScanResult scan() {
         final Set<String> livePageIds;
         try (JournalScanner phase0 = journal.scan(0)) {
             livePageIds = PageIndex.buildLivePageSet(phase0).livePages();

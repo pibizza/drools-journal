@@ -16,9 +16,19 @@
 package org.drools.journal.test;
 
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.drools.journal.api.EmbeddedPayload;
+import org.drools.journal.api.ModifyLambdaRegistry;
+import org.drools.journal.api.Payload;
 import org.drools.journal.chronicle.ChronicleJournalStorage;
+import org.drools.journal.core.CompactionCoordinator;
+import org.drools.journal.core.EmbedStrategy;
+import org.drools.journal.core.RestoreEngine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.kie.api.KieBase;
@@ -70,6 +80,95 @@ class ChroniclePageRetirementIT {
             storage.retirePages("nonexistent");
 
             assertThat(Path.of(path, "page-0")).isDirectory();
+        }
+    }
+
+    @Test
+    void twoConcurrentCompactions_disjointPageSets_restoreShowsSurvivingFacts() throws Exception {
+        EmbedStrategy embed = new EmbedStrategy();
+        String journalPath = tempDir.resolve("concurrent-compaction").toString();
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            // Pages 0+1: fact 1 survives, facts 2-4 die
+            storage.insert(1L, embed.store(1, null));
+            storage.insert(2L, embed.store(2, null));
+            storage.insert(3L, embed.store(3, null));
+            storage.insert(4L, embed.store(4, null));
+            storage.safepoint();
+            storage.retract(2L);
+            storage.retract(3L);
+            storage.retract(4L);
+            storage.safepoint();
+
+            // Pages 2+3: fact 5 survives, facts 6-8 die
+            storage.insert(5L, embed.store(5, null));
+            storage.insert(6L, embed.store(6, null));
+            storage.insert(7L, embed.store(7, null));
+            storage.insert(8L, embed.store(8, null));
+            storage.safepoint();
+            storage.retract(6L);
+            storage.retract(7L);
+            storage.retract(8L);
+            storage.safepoint();
+
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch go = new CountDownLatch(1);
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            try {
+                Future<?> c1 = pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
+                    return null;
+                });
+                Future<?> c2 = pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    CompactionCoordinator.onDemand(storage).compact(Set.of("2", "3"));
+                    return null;
+                });
+
+                ready.await();
+                go.countDown();
+                c1.get();
+                c2.get();
+            } finally {
+                pool.shutdown();
+            }
+        }
+
+        // Reopen and verify restore sees only the two surviving facts
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            RestoreEngine.ScanResult result =
+                    new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+            assertThat(result.survivingFacts()).hasSize(2);
+            assertThat(result.survivingFacts()).containsKey(1L);
+            assertThat(result.survivingFacts()).containsKey(5L);
+        }
+    }
+
+    @Test
+    void singleCompaction_chronicle_restoreShowsSurvivingFacts() throws Exception {
+        EmbedStrategy embed = new EmbedStrategy();
+        String journalPath = tempDir.resolve("single-compaction").toString();
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            storage.insert(1L, embed.store(1, null));
+            storage.insert(2L, embed.store(2, null));
+            storage.insert(3L, embed.store(3, null));
+            storage.insert(4L, embed.store(4, null));
+            storage.safepoint();
+            storage.retract(2L);
+            storage.retract(3L);
+            storage.retract(4L);
+            storage.safepoint();
+
+            CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
+        }
+
+        try (ChronicleJournalStorage storage = ChronicleJournalStorage.atPath(journalPath)) {
+            RestoreEngine.ScanResult result =
+                    new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+            assertThat(result.survivingFacts()).hasSize(1);
+            assertThat(result.survivingFacts()).containsKey(1L);
         }
     }
 
