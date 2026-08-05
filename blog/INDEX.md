@@ -39,3 +39,4 @@
 | [2026-07-29-PaoloB02-fire-wasnt-free.md](2026-07-29-PaoloB02-fire-wasnt-free.md) | 2026-07-29 | The Fire Wasn't Free |
 | [2026-07-30-PaoloB01-the-store-that-wasnt-there.md](2026-07-30-PaoloB01-the-store-that-wasnt-there.md) | 2026-07-30 | The Store That Wasn't There |
 | [2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md](2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md) | 2026-07-31 | The Page That Wasn't Sealed |
+| [2026-08-05-PaoloB01-the-record-that-costs-more-than-restore.md](2026-08-05-PaoloB01-the-record-that-costs-more-than-restore.md) | 2026-08-05 | SNAPSHOT mode brainstorm: write-path optimization via dropping RuleMatchRecords |
