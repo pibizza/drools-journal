@@ -21,7 +21,7 @@ import org.drools.journal.api.ModifyLambdaRegistry;
 import org.drools.journal.api.ObjectStorageMode;
 import org.drools.journal.api.ObjectStorageStrategy;
 import org.drools.journal.api.RuleMatchRecord;
-
+import org.drools.journal.core.RestoreEngine.ScanResult;
 import org.drools.base.RuleBase;
 import org.drools.core.SessionConfiguration;
 import org.drools.core.common.InternalWorkingMemory;
@@ -69,29 +69,34 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         ObjectStorageStrategy strategy = buildStrategy(opt);
         InternalKnowledgeBase kbase = (InternalKnowledgeBase) ruleBase;
 
-        JournalledKieSession session;
-        if (fromPool || kbase.getSessionPool() == null) {
-            session = new JournalledKieSession(
-                    kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment, storage);
-            if (sessionConfig.isKeepReference()) {
-                kbase.addStatefulSession(session);
-            }
-        } else {
+        if (!fromPool && kbase.getSessionPool() != null) {
             return (InternalWorkingMemory) kbase.getSessionPool().newKieSession(sessionConfig);
+        } 
+        JournalledKieSession session = new JournalledKieSession(
+                kbase.nextWorkingMemoryCounter(), kbase, true, sessionConfig, environment, storage);
+
+        if (sessionConfig.isKeepReference()) {
+            kbase.addStatefulSession(session);
         }
 
+        // the session is restored at startup
         if (!storage.isEmpty()) {
             restore(session, storage, opt.getModifyLambdaRegistry(), strategy);
         }
 
+        // the listener generates the events that are stored in the journal
+        // so it has to be added AFTER the session is restored
         JournallingRuntimeEventListener listener =
                 new JournallingRuntimeEventListener(storage, strategy);
         session.addEventListener((org.kie.api.event.rule.RuleRuntimeEventListener) listener);
         session.addEventListener((org.kie.api.event.rule.AgendaEventListener) listener);
+        
+        // Hook for DRL precompiler: enables delta-based modify capture via journal.stageModify()
         if (hasJournalGlobal(kbase)) {
             session.setGlobal("journal", listener);
         }
 
+        //setup of compaction coordinator, the component in charge of compacting the journal
         Duration interval = opt.getCompactionInterval();
         CompactionCoordinator coordinator = new CompactionCoordinator(storage, interval);
         if (!interval.isZero()) {
@@ -102,6 +107,8 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         return session;
     }
 
+    // checks if the global "journal" is declared in a DRL
+    // if declared, the DRL has been rewritten by the precompiler and we need to hook the listener
     private static boolean hasJournalGlobal(final KieBase kbase) {
         for (var pkg : kbase.getKiePackages()) {
             for (var global : pkg.getGlobalVariables()) {
@@ -124,14 +131,25 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
                                 final JournalStorage storage,
                                 final ModifyLambdaRegistry registry,
                                 final ObjectStorageStrategy strategy) {
-        RestoreEngine.ScanResult scanResult = new RestoreEngine(storage, registry, strategy).scan();
+        RestoreEngine.ScanResult scanResult = extractRecordsFromJournal(storage, registry, strategy);
         Map<Long, FactHandle> oldToNew = insertNonLogicalFacts(session, scanResult);
         ReplayFilter replayFilter = buildReplayFilter(scanResult, oldToNew);
-        session.fireAllRules(replayFilter);
-        wireTms(session, scanResult, oldToNew, replayFilter);
+        regenerateMatchObjects(session, replayFilter);
+        if (!scanResult.pendingTmsLinks().isEmpty()) {
+            TruthMaintenanceSystem tms = getTms(session);
+            wireTms(tms, scanResult, oldToNew, replayFilter);
+        }
         session.setReplayFilter(replayFilter);
     }
 
+    // we extract the existing records from the journal
+	private static ScanResult extractRecordsFromJournal(final JournalStorage storage,
+			final ModifyLambdaRegistry registry, final ObjectStorageStrategy strategy) {
+		return new RestoreEngine(storage, registry, strategy).scan();
+	}
+
+	// we insert non-logical facts 
+	// we also create a map from the ids saved in the journal to the fact handles in memory after restoring
     private static Map<Long, FactHandle> insertNonLogicalFacts(final JournalledKieSession session,
                                                                final RestoreEngine.ScanResult scanResult) {
         Set<Long> logicalIds = new HashSet<>();
@@ -147,6 +165,8 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         return oldToNew;
     }
 
+    // the replay filter is required to prevent refiring of existing rules
+    // the filter contains the rules to be ignored
     private static ReplayFilter buildReplayFilter(final RestoreEngine.ScanResult scanResult,
                                                   final Map<Long, FactHandle> oldToNew) {
         List<RuleMatchRecord> translatedMatches = new ArrayList<>(scanResult.firedMatches().size());
@@ -161,17 +181,16 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
         return new ReplayFilter(translatedMatches);
     }
 
-    private static void wireTms(final JournalledKieSession session,
+    // this is required to regenerate the match objects for tms 
+	private static void regenerateMatchObjects(final JournalledKieSession session, ReplayFilter replayFilter) {
+		session.fireAllRules(replayFilter);
+	}
+
+	//last steo we restore the tms links in the truth management system. 
+    private static void wireTms(final TruthMaintenanceSystem tms,
                                 final RestoreEngine.ScanResult scanResult,
                                 final Map<Long, FactHandle> oldToNew,
                                 final ReplayFilter replayFilter) {
-        if (scanResult.pendingTmsLinks().isEmpty()) {
-            return;
-        }
-        InternalWorkingMemoryEntryPoint defaultEP =
-                (InternalWorkingMemoryEntryPoint) session.getDefaultEntryPoint();
-        TruthMaintenanceSystem tms =
-                TruthMaintenanceSystemFactory.get().getOrCreateTruthMaintenanceSystem(defaultEP);
 
         for (RestoreEngine.PendingTmsLink link : scanResult.pendingTmsLinks()) {
             RuleMatchRecord justifier = scanResult.firedMatchesById().get(link.justifyingRuleMatchId());
@@ -186,6 +205,14 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
             tms.insertPositive(logicalObject, (InternalMatch) cachedMatch);
         }
     }
+
+	private static TruthMaintenanceSystem getTms(final JournalledKieSession session) {
+		InternalWorkingMemoryEntryPoint defaultEP =
+                (InternalWorkingMemoryEntryPoint) session.getDefaultEntryPoint();
+        TruthMaintenanceSystem tms =
+                TruthMaintenanceSystemFactory.get().getOrCreateTruthMaintenanceSystem(defaultEP);
+		return tms;
+	}
 
     @Override
     public int servicePriority() {
