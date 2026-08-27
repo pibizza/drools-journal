@@ -41,3 +41,4 @@
 | [2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md](2026-07-31-PaoloB01-the-page-that-wasnt-sealed.md) | 2026-07-31 | The Page That Wasn't Sealed |
 | [2026-08-05-PaoloB01-the-record-that-costs-more-than-restore.md](2026-08-05-PaoloB01-the-record-that-costs-more-than-restore.md) | 2026-08-05 | SNAPSHOT mode brainstorm: write-path optimization via dropping RuleMatchRecords |
 | [2026-08-07-PaoloB01-the-access-that-was-always-there.md](2026-08-07-PaoloB01-the-access-that-was-always-there.md) | 2026-08-07 | Discovered Chronicle Queue has random access via moveToIndex(); designed JournalPosition to replace long positions across the SPI |
+| [2026-08-27-PaoloB01-the-buffer-that-wasnt-needed.md](2026-08-27-PaoloB01-the-buffer-that-wasnt-needed.md) | 2026-08-27 | Extracted ScanCursor and PageIndexCursor; discovered buffer-then-flush redundant when liveness filter guarantees sealed pages |
