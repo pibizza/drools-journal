@@ -15,22 +15,13 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
-import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
-import org.drools.journal.api.ModifyLambda;
 import org.drools.journal.api.ModifyLambdaRegistry;
-import org.drools.journal.api.ModifyRecord;
 import org.drools.journal.api.ObjectStorageStrategy;
-import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
-import org.drools.journal.api.SafepointRecord;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +35,7 @@ public class RestoreEngine {
                       List<RuleMatchRecord> firedMatches,
                       List<PendingTmsLink> pendingTmsLinks,
                       Map<Long, RuleMatchRecord> firedMatchesById) {}
-
+    
     private final JournalStorage journal;
     private final ModifyLambdaRegistry lambdaRegistry;
     private final ObjectStorageStrategy strategy;
@@ -69,71 +60,20 @@ public class RestoreEngine {
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
         // Flushes occur at physical page boundaries (size-triggered rolls) and at
         // SafepointRecords (safepoint-triggered rolls).
-        final Map<Long, Object> survivingFacts = new HashMap<>();
-        final List<RuleMatchRecord> firedMatches = new ArrayList<>();
-        final List<PendingTmsLink> pendingTmsLinks = new ArrayList<>();
-        final Map<Long, RuleMatchRecord> firedMatchesById = new HashMap<>();
-        final List<JournalRecord> pending = new ArrayList<>();
-        String lastPhase1PageId = null;
 
+    	ScanCursor cursor = new ScanCursor(lambdaRegistry, strategy);
         try (JournalScanner scanner = journal.scan(0)) {
             while (scanner.hasNext()) {
                 final JournalRecord record = scanner.next();
                 final String pageId = scanner.currentPageId();
-
-                // Physical page boundary (size-triggered roll — no SafepointRecord at edge)
-                if (!pageId.equals(lastPhase1PageId) && lastPhase1PageId != null) {
-                    if (livePageIds.contains(lastPhase1PageId)) {
-                        flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
-                    }
-                    pending.clear();
-                }
-                lastPhase1PageId = pageId;
-
-                if (record instanceof SafepointRecord) {
-                    // Safepoint seals the physical page — flush if live
-                    if (livePageIds.contains(pageId)) {
-                        flush(pending, survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
-                    }
-                    pending.clear();
-                } else if (record instanceof CompactionPrepareRecord
-                        || record instanceof CompactionCommitRecord) {
-                    // compaction markers — no action
-                } else {
-                    pending.add(record);
+                if (livePageIds.contains(pageId)) {
+                	cursor.move(record, pageId);
                 }
             }
         }
         // Trailing records after the last safepoint are silently discarded.
 
-        return new ScanResult(survivingFacts, firedMatches, pendingTmsLinks, firedMatchesById);
+        return cursor.getScanResult();
     }
 
-    private void flush(final List<JournalRecord> pending,
-                       final Map<Long, Object> survivingFacts,
-                       final List<RuleMatchRecord> firedMatches,
-                       final List<PendingTmsLink> pendingTmsLinks,
-                       final Map<Long, RuleMatchRecord> firedMatchesById) {
-        for (JournalRecord record : pending) {
-            if (record instanceof InsertRecord insert) {
-                survivingFacts.put(insert.factHandleId(), strategy.load(insert.payload()));
-                if (insert.logical()) {
-                    pendingTmsLinks.add(new PendingTmsLink(insert.factHandleId(), insert.justifyingRuleMatchId()));
-                }
-            } else if (record instanceof RetractRecord retract) {
-                survivingFacts.remove(retract.factHandleId());
-                pendingTmsLinks.removeIf(link -> link.factHandleId() == retract.factHandleId());
-            } else if (record instanceof RuleMatchRecord match) {
-                firedMatches.add(match);
-                firedMatchesById.put(match.id(), match);
-            } else if (record instanceof ModifyRecord modify) {
-                ModifyLambda lambda = lambdaRegistry.lookup(modify.lambdaClassRef());
-                Object fact = survivingFacts.get(modify.factHandleId());
-                if (fact != null) {
-                    Object[] params = (Object[]) JavaSerializer.deserialize(modify.parameters());
-                    lambda.apply(fact, params);
-                }
-            }
-        }
-    }
 }
