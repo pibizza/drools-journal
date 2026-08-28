@@ -29,21 +29,25 @@ import java.util.Set;
 
 final class PageIndex {
 
-    record PageIndexStatus(Set<String> livePages, Set<String> retiredPages) {}
+	static class PageIndexCursor {
+		private List<String> pageIndex;
+		private Set<String> retiredPages;
+		private Map<String, String[]> pendingCommits;
+		private List<String> currentIntervalPages;
+		private String lastPageId;
 
-    private PageIndex() {}
+		PageIndexCursor() {
+	        pageIndex = new ArrayList<>();
+	        pendingCommits = new LinkedHashMap<>();
+	        currentIntervalPages = new ArrayList<>();
+	        retiredPages = new HashSet<>();
+	        lastPageId = null;
+		}
 
-    static PageIndexStatus buildLivePageSet(final JournalScanner scanner) {
-        final List<String> pageIndex = new ArrayList<>();
-        final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
-        final List<String> currentIntervalPages = new ArrayList<>();
-        final Set<String> retiredPages = new HashSet<>();
-        String lastPageId = null;
-
-        while (scanner.hasNext()) {
-            final JournalRecord record = scanner.next();
-            final String pageId = scanner.currentPageId();
-
+		public PageIndexStatus getPageIndexStatus() {
+			return new PageIndexStatus(new HashSet<>(pageIndex), retiredPages);
+		}
+		public void move(String pageId, JournalRecord record) {
             if (!pageId.equals(lastPageId)) {
                 currentIntervalPages.add(pageId);
                 lastPageId = pageId;
@@ -56,31 +60,44 @@ final class PageIndex {
                     for (final String replaced : e.getValue()) {
                         retiredPages.add(replaced);
                     }
-                    spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
+                    spliceIntoIndex(e.getKey(), e.getValue());
                 }
                 pendingCommits.clear();
                 pageIndex.addAll(currentIntervalPages);
                 currentIntervalPages.clear();
             }
+		}
+
+		void spliceIntoIndex(final String mergedId, final String[] replacedIds) {
+		    final Set<String> retired = Set.of(replacedIds);
+		    int insertPos = -1;
+		    for (int i = 0; i < pageIndex.size(); i++) {
+		        if (retired.contains(pageIndex.get(i))) {
+		            insertPos = i;
+		            break;
+		        }
+		    }
+		    pageIndex.removeIf(retired::contains);
+		    if (insertPos >= 0) {
+		        pageIndex.add(insertPos, mergedId);
+		    }
+		}
+ 	}
+	
+    record PageIndexStatus(Set<String> livePages, Set<String> retiredPages) {}
+
+    private PageIndex() {}
+
+    static PageIndexStatus buildLivePageSet(final JournalScanner scanner) {
+
+        PageIndexCursor cursor = new PageIndexCursor();
+        while (scanner.hasNext()) {
+            final JournalRecord record = scanner.next();
+            final String pageId = scanner.currentPageId();
+
+            cursor.move(pageId, record);
         }
 
-        return new PageIndexStatus(new HashSet<>(pageIndex), retiredPages);
-    }
-
-    static void spliceIntoIndex(final List<String> pageIndex,
-                                final String mergedId,
-                                final String[] replacedIds) {
-        final Set<String> retired = Set.of(replacedIds);
-        int insertPos = -1;
-        for (int i = 0; i < pageIndex.size(); i++) {
-            if (retired.contains(pageIndex.get(i))) {
-                insertPos = i;
-                break;
-            }
-        }
-        pageIndex.removeIf(retired::contains);
-        if (insertPos >= 0) {
-            pageIndex.add(insertPos, mergedId);
-        }
+        return cursor.getPageIndexStatus();
     }
 }
