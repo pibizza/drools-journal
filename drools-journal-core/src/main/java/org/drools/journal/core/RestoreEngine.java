@@ -52,10 +52,7 @@ public class RestoreEngine {
     }
 
     public ScanResult scan() {
-        final Set<String> livePageIds;
-        try (JournalScanner phase0 = journal.scan(0)) {
-            livePageIds = PageIndex.buildLivePageSet(phase0).livePages();
-        }
+        final Set<String> livePageIds = PageIndex.buildLivePageSet(journal).livePages();
 
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
         // Flushes occur at physical page boundaries (size-triggered rolls) and at

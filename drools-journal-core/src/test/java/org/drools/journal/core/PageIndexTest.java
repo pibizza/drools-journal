@@ -15,7 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.JournalScanner;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -32,10 +31,7 @@ class PageIndexTest {
         storage.insert(2L, "b");
         storage.safepoint(1);
 
-        PageIndex.PageIndexStatus status;
-        try (JournalScanner scanner = storage.scan(0)) {
-            status = PageIndex.buildLivePageSet(scanner);
-        }
+        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
 
         assertThat(status.livePages()).containsExactlyInAnyOrder("0", "1");
         assertThat(status.retiredPages()).isEmpty();
@@ -51,10 +47,7 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         storage.safepoint(1);          // seals the commit
 
-        PageIndex.PageIndexStatus status;
-        try (JournalScanner scanner = storage.scan(0)) {
-            status = PageIndex.buildLivePageSet(scanner);
-        }
+        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
 
         assertThat(status.retiredPages()).containsExactly("0");
     }
@@ -69,10 +62,7 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         // No safepoint — commit is not sealed
 
-        PageIndex.PageIndexStatus status;
-        try (JournalScanner scanner = storage.scan(0)) {
-            status = PageIndex.buildLivePageSet(scanner);
-        }
+        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
 
         assertThat(status.retiredPages()).isEmpty();
     }
@@ -95,10 +85,7 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("2"));
         storage.safepoint(3);
 
-        PageIndex.PageIndexStatus status;
-        try (JournalScanner scanner = storage.scan(0)) {
-            status = PageIndex.buildLivePageSet(scanner);
-        }
+        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
 
         assertThat(status.retiredPages()).containsExactlyInAnyOrder("0", "2");
     }

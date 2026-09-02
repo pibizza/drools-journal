@@ -18,9 +18,5 @@ package org.drools.journal.api;
 /**
  * Root of the append-only journal record hierarchy.
  * Every mutation to a durable session produces one record of this type.
- */
-public sealed interface JournalRecord
-        permits InsertRecord, RetractRecord, ModifyRecord,
-                RuleMatchRecord, SafepointRecord,
-                CompactionPrepareRecord, CompactionCommitRecord {
-}
+ */ 
+public interface JournalRecord {};

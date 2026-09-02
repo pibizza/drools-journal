@@ -42,15 +42,9 @@ import org.drools.journal.api.SafepointRecord;
  */
 public class InMemoryJournalStorage implements JournalStorage {
 
-    static final class Page {
-        final String id;
-        final List<JournalRecord> records = new ArrayList<>();
-
-        Page(final String id) {
-            this.id = id;
-        }
-    }
-
+	
+	private final Page catalog = new Page("0");
+	
     /** All pages ever created, in creation order. Primary sequential structure. */
     private final List<Page> journal = new ArrayList<>();
 
@@ -71,44 +65,59 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     @Override
     public synchronized long insert(final long factHandleId, final Payload payload) {
+        checkOpen();
         return append(new InsertRecord(factHandleId, false, -1L, payload));
     }
 
     @Override
     public synchronized long insertLogical(final long factHandleId, final Payload payload,
                                            final long justifyingRuleMatchId) {
+        checkOpen();
         return append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, payload));
     }
 
     @Override
     public synchronized long retract(final long factHandleId) {
+        checkOpen();
         return append(new RetractRecord(factHandleId));
     }
 
     @Override
     public synchronized long modify(final long factHandleId, final String lambdaClassRef, final byte[] params) {
+        checkOpen();
         return append(new ModifyRecord(factHandleId, lambdaClassRef, params));
     }
 
     @Override
     public synchronized long ruleMatch(final long id, final String packageName,
                                        final String ruleName, final long[] factHandleIds) {
+        checkOpen();
         return append(new RuleMatchRecord(id, packageName, ruleName, factHandleIds));
     }
 
     @Override
     public synchronized long compactionPrepare(final String preparingPageId, final String[] replacedPageIds) {
-        return append(new CompactionPrepareRecord(preparingPageId, replacedPageIds));
+        checkOpen();
+        CompactionPrepareRecord record = new CompactionPrepareRecord(preparingPageId, replacedPageIds);
+        catalog.records.add(record);
+		return append(record);
     }
 
     @Override
     public synchronized long compactionCommit(final String mergedPageId, final String[] replacedPageIds) {
-        return append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
+        checkOpen();
+        CompactionCommitRecord record = new CompactionCommitRecord(mergedPageId, replacedPageIds);
+        catalog.records.add(record);
+		return append(record);
     }
 
     @Override
     public synchronized void safepoint() {
-        append(new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis()));
+        checkOpen();
+        SafepointRecord record = new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis());
+        catalog.records.add(new PageRecord(String.valueOf(record.sequenceNo())));
+		append(record);
+        
     }
 
     // -------------------------------------------------------------------------
@@ -195,7 +204,11 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     /** Convenience: safepoint with an explicit sequence number (for deterministic tests). */
     void safepoint(final long sequenceNo) {
-        append(new SafepointRecord(sequenceNo, 0L));
+        checkOpen();
+        SafepointRecord record = new SafepointRecord(sequenceNo, 0L);
+        catalog.records.add(new PageRecord(String.valueOf(record.sequenceNo())));
+		append(record);
+		
     }
 
     /** Forces a physical page roll without a safepoint — simulates size-triggered rolling in tests. */
@@ -221,7 +234,6 @@ public class InMemoryJournalStorage implements JournalStorage {
     // -------------------------------------------------------------------------
 
     private synchronized long append(final JournalRecord record) {
-        checkOpen();
         currentPage.records.add(record);
 
         if (record instanceof SafepointRecord sp) {

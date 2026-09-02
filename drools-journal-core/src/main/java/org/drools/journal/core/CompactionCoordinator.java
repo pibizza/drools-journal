@@ -85,10 +85,7 @@ public class CompactionCoordinator {
     }
 
     void runCycle() {
-        PageIndex.PageIndexStatus pageStatus;
-        try (JournalScanner phase0 = storage.scan(0)) {
-            pageStatus = PageIndex.buildLivePageSet(phase0);
-        }
+        PageIndex.PageIndexStatus pageStatus = PageIndex.buildLivePageSet(storage);
 
         if (!pageStatus.retiredPages().isEmpty()) {
             storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
@@ -107,10 +104,7 @@ public class CompactionCoordinator {
     }
 
     Map<String, long[]> scanLiveness() {
-        final Set<String> livePageIds;
-        try (JournalScanner phase0 = storage.scan(0)) {
-            livePageIds = PageIndex.buildLivePageSet(phase0).livePages();
-        }
+        final Set<String> livePageIds = PageIndex.buildLivePageSet(storage).livePages();
         return scanLiveness(livePageIds);
     }
 

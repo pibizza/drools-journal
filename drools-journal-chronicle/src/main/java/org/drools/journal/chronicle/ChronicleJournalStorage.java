@@ -296,6 +296,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
                     throw new IllegalArgumentException("CompactionPrepareRecord belongs in the catalog, not data pages");
             case CompactionCommitRecord ignored ->
                     throw new IllegalArgumentException("CompactionCommitRecord belongs in the catalog, not data pages");
+		default -> throw new IllegalArgumentException("Unexpected value: " + record);
         }
     }
 
