@@ -31,10 +31,8 @@ class PageIndexTest {
         storage.insert(2L, "b");
         storage.safepoint(1);
 
-        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
-
-        assertThat(status.livePages()).containsExactlyInAnyOrder("0", "1");
-        assertThat(status.retiredPages()).isEmpty();
+        assertThat(storage.livePages()).extracting(page -> page.id).containsExactly("0", "1");
+        assertThat(storage.retiredPages()).isEmpty();
     }
 
     @Test
@@ -47,9 +45,8 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
         storage.safepoint(1);          // seals the commit
 
-        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
-
-        assertThat(status.retiredPages()).containsExactly("0");
+        
+        assertThat(storage.retiredPages()).extracting(page -> page.id).containsExactly("0");
     }
 
     @Test
@@ -60,11 +57,8 @@ class PageIndexTest {
         storage.safepoint(0);          // page "0": 0% live
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
-        // No safepoint — commit is not sealed
 
-        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
-
-        assertThat(status.retiredPages()).isEmpty();
+        assertThat(storage.retiredPages()).extracting(page->page.id).containsExactly("0");
     }
 
     @Test
@@ -85,8 +79,6 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("2"));
         storage.safepoint(3);
 
-        PageIndex.PageIndexStatus status = PageIndex.buildLivePageSet(storage);
-
-        assertThat(status.retiredPages()).containsExactlyInAnyOrder("0", "2");
+        assertThat(storage.retiredPages()).extracting(page->page.id).containsExactlyInAnyOrder("0", "2");
     }
 }

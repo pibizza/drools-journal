@@ -24,7 +24,6 @@ import org.drools.journal.api.RuleMatchRecord;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 // NOT thread-safe — Drools sessions fire on a single thread
 public class RestoreEngine {
@@ -52,7 +51,6 @@ public class RestoreEngine {
     }
 
     public ScanResult scan() {
-        final Set<String> livePageIds = PageIndex.buildLivePageSet(journal).livePages();
 
         // Phase 1: replay raw stream, flushing live pages, discarding retired ones.
         // Flushes occur at physical page boundaries (size-triggered rolls) and at
@@ -63,9 +61,7 @@ public class RestoreEngine {
             while (scanner.hasNext()) {
                 final JournalRecord record = scanner.next();
                 final String pageId = scanner.currentPageId();
-                if (livePageIds.contains(pageId)) {
-                	cursor.move(record, pageId);
-                }
+                cursor.move(record, pageId);
             }
         }
         // Trailing records after the last safepoint are silently discarded.

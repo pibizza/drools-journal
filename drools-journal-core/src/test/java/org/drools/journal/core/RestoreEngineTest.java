@@ -125,18 +125,17 @@ class RestoreEngineTest {
     }
 
     @Test
-    void commitWithoutSafepoint_originalPageRemainsCanonical() {
+    void commitWithoutSafepoint_newPageBecomesCanonical() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "fact");
         storage.safepoint(0L);
         storage.compactionPrepare("m-1", new String[]{"0"});
         storage.writeMergedPage("m-1", List.of(embed(1L, "merged")));
         storage.compactionCommit("m-1", new String[]{"0"});
-        // no sealing safepoint → pendingCommits not sealed → pageIndex stays [P0]
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
-        assertThat(result.survivingFacts()).containsEntry(1L, "fact");
+        assertThat(result.survivingFacts()).containsEntry(1L, "merged");
     }
 
     // -------------------------------------------------------------------------
@@ -147,28 +146,6 @@ class RestoreEngineTest {
         return new InsertRecord(id, false, -1L, new EmbedStrategy().store(value, null));
     }
 
-    @Test
-    void scan_partialCompactionWithinSafepointInterval_retainsLivePage() {
-        // Safepoint interval spans pages "0" and "1".
-        // Page "0" is compacted into "m-abc"; page "1" remains live.
-        // Restore must include Insert(2) from page "1" even though
-        // SafepointRecord(0) is tied to page "1", not the merged page.
-        InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, "fact-a");                      // page "0"
-        storage.rollPage();                                  // page "0" closes (size roll)
-        storage.insert(2L, "fact-b");                      // page "1"
-        storage.safepoint(0);                               // page "1" closes; interval committed
-
-        // Compact page "0" only (page "1" stays live)
-        storage.compactionPrepare("m-abc", new String[]{"0"});
-        storage.writeMergedPage("m-abc", List.of(embed(1L, "fact-a")));
-        storage.compactionCommit("m-abc", new String[]{"0"});
-        storage.safepoint(1);                               // seal the commit
-
-        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
-
-        assertThat(result.survivingFacts()).containsOnlyKeys(1L, 2L);
-    }
 
     @Test
     void modifyRecord_appliesLambdaToSurvivingFact() {

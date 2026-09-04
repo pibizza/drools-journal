@@ -15,8 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -24,7 +22,6 @@ import org.drools.journal.api.ModifyLambdaRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -46,30 +43,8 @@ class CompactionCorrectnessTest {
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
-        List<JournalRecord> records = drainAll(storage);
-        long prepareCount = records.stream()
-                .filter(r -> r instanceof CompactionPrepareRecord)
-                .count();
-        assertThat(prepareCount).isEqualTo(1);
-    }
-
-    @Test
-    void compact_phase1_prepareRecord_referencesSourcePages() {
-        InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, "a");
-        storage.safepoint(0);
-        storage.retract(1L);
-        storage.safepoint(1);
-
-        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-
-        List<JournalRecord> records = drainAll(storage);
-        CompactionPrepareRecord prepare = records.stream()
-                .filter(r -> r instanceof CompactionPrepareRecord)
-                .map(r -> (CompactionPrepareRecord) r)
-                .findFirst()
-                .orElseThrow();
-        assertThat(Arrays.asList(prepare.replacedPageIds())).containsExactlyInAnyOrder("0", "1");
+        assertThat(storage.livePages()).hasSize(1);
+        assertThat(storage.retiredPages()).extracting(page->page.id).hasSize(2).containsExactlyInAnyOrder("0", "1");
     }
 
     @Test
@@ -77,17 +52,20 @@ class CompactionCorrectnessTest {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         // Page "0": 4 inserts, 3 later retracted → liveCount=1/totalCount=4 → 25%, sparse
         storage.insert(1L, "live");
-        storage.insert(2L, "dead"); storage.insert(3L, "dead"); storage.insert(4L, "dead");
+        storage.insert(2L, "dead"); 
+        storage.insert(3L, "dead"); 
+        storage.insert(4L, "dead");
         storage.safepoint(0);
         // Page "1": 3 retracts → liveCount=0/totalCount=3 → 0%, sparse
-        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.retract(2L); 
+        storage.retract(3L); 
+        storage.retract(4L);
         storage.safepoint(1);
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
-        // Pm is a separate page in the raw journal (not inline between PREPARE and COMMIT).
-        // Fact 1 (live) appears twice: once in P0, once in Pm.
-        // Facts 2-4 (retracted) appear once each in P0 only — not in Pm.
+        // Fact 1 (live) appears only in Pm. The scanner returns ONLY sealed pages
+        // Facts 2 is (retracted) never appears.
         List<JournalRecord> records = drainAll(storage);
         long insertCount1 = records.stream()
                 .filter(r -> r instanceof InsertRecord ir && ir.factHandleId() == 1L)
@@ -95,8 +73,8 @@ class CompactionCorrectnessTest {
         long insertCount2 = records.stream()
                 .filter(r -> r instanceof InsertRecord ir && ir.factHandleId() == 2L)
                 .count();
-        assertThat(insertCount1).isEqualTo(2);
-        assertThat(insertCount2).isEqualTo(1);
+        assertThat(insertCount1).isEqualTo(1);
+        assertThat(insertCount2).isEqualTo(0);
     }
 
     @Test
@@ -159,22 +137,6 @@ class CompactionCorrectnessTest {
         assertThat(result.survivingFacts()).containsKey(1L);
     }
 
-    @Test
-    void compact_writesPrepareThenCommit() {
-        InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        storage.insert(1L, "a");
-        storage.safepoint(0);
-        storage.retract(1L);
-        storage.safepoint(1);
-
-        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-
-        List<JournalRecord> records = drainAll(storage);
-        long prepareCount = records.stream().filter(r -> r instanceof CompactionPrepareRecord).count();
-        long commitCount = records.stream().filter(r -> r instanceof CompactionCommitRecord).count();
-        assertThat(prepareCount).isEqualTo(1);
-        assertThat(commitCount).isEqualTo(1);
-    }
 
     @Test
     void twoSequentialCompactions_eachSealedCorrectly() {

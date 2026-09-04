@@ -15,8 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
@@ -91,7 +89,7 @@ public class CompactionCoordinator {
             storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
         }
 
-        Map<String, long[]> liveness = scanLiveness(pageStatus.livePages());
+        Map<String, long[]> liveness = scanLiveness();
         Set<String> candidates = new HashSet<>();
         liveness.forEach((id, counts) -> {
             if (isSparse(counts)) {
@@ -104,11 +102,6 @@ public class CompactionCoordinator {
     }
 
     Map<String, long[]> scanLiveness() {
-        final Set<String> livePageIds = PageIndex.buildLivePageSet(storage).livePages();
-        return scanLiveness(livePageIds);
-    }
-
-    Map<String, long[]> scanLiveness(final Set<String> livePageIds) {
         final Map<String, long[]> liveness = new HashMap<>();
         final Map<Long, String> factToPage = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
@@ -121,20 +114,15 @@ public class CompactionCoordinator {
 
                 // Physical page boundary (size-triggered roll, no SafepointRecord)
                 if (!pageId.equals(lastPageId) && lastPageId != null) {
-                    if (livePageIds.contains(lastPageId)) {
-                        flushPageLiveness(lastPageId, pending, liveness, factToPage);
-                    }
+                	flushPageLiveness(lastPageId, pending, liveness, factToPage);
                     pending.clear();
                 }
                 lastPageId = pageId;
 
                 if (record instanceof SafepointRecord) {
-                    if (livePageIds.contains(pageId)) {
-                        flushPageLiveness(pageId, pending, liveness, factToPage);
-                    }
+                	flushPageLiveness(pageId, pending, liveness, factToPage);
                     pending.clear();
-                } else if (!(record instanceof CompactionPrepareRecord
-                        || record instanceof CompactionCommitRecord)) {
+                } else {
                     pending.add(record);
                 }
             }
