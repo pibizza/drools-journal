@@ -225,7 +225,14 @@ public class InMemoryJournalStorage implements JournalStorage {
     
     @Override
     public String toString() {
-        return JournalPrinter.print(this);
+    	List<JournalRecord> records = new ArrayList<JournalRecord>();
+    	
+    	for (Page page: journal) {
+    		records.addAll(page.records);
+    	}
+    	records.addAll(currentPage.records);
+    	
+        return JournalPrinter.print(records);
     }
 
     // -------------------------------------------------------------------------

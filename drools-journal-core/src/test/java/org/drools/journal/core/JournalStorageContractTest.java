@@ -15,11 +15,7 @@
  */
 package org.drools.journal.core;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.Payload;
@@ -255,15 +251,5 @@ public abstract class JournalStorageContractTest {
                 assertThat(record.factHandleIds()).containsExactly(1L, 2L);
             }
         }
-    }
-
-    // -------------------------------------------------------------------------
-    // helpers
-    // -------------------------------------------------------------------------
-
-    private static List<JournalRecord> drain(final JournalScanner scanner) {
-        List<JournalRecord> result = new ArrayList<>();
-        scanner.forEachRemaining(result::add);
-        return result;
     }
 }

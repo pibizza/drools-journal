@@ -19,6 +19,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import org.drools.journal.api.CompactionCommitRecord;
@@ -42,11 +43,10 @@ public final class JournalPrinter {
 
     private JournalPrinter() {}
 
-    public static String print(final JournalStorage storage) {
+    public static String print(List<JournalRecord> records) {
         StringBuilder sb = new StringBuilder();
-        var scanner = storage.scan(0);
-        while (scanner.hasNext()) {
-            sb.append(render(scanner.next())).append('\n');
+        for (JournalRecord record: records) {
+            sb.append(render(record)).append('\n');
         }
         return sb.toString();
     }
