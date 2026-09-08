@@ -16,9 +16,7 @@
 package org.drools.journal.core;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.drools.journal.api.CompactionCommitRecord;
@@ -42,73 +40,87 @@ import org.drools.journal.api.SafepointRecord;
  */
 public class InMemoryJournalStorage implements JournalStorage {
 
-    static final class Page {
-        final String id;
-        final List<JournalRecord> records = new ArrayList<>();
-
-        Page(final String id) {
-            this.id = id;
-        }
-    }
-
+	
+	private final Page catalog = new Page("0");
+	
     /** All pages ever created, in creation order. Primary sequential structure. */
     private final List<Page> journal = new ArrayList<>();
 
-    /** Lookup helper — not the primary structure. */
-    private final Map<String, Page> pageById = new HashMap<>();
-
     private long pageCounter = 0L;
 
+    private int recordCounter = 0;
+    
     /** Currently open page — accumulates records until the next safepoint or roll. */
-    private Page currentPage = new Page(String.valueOf(pageCounter++));
+    private Page currentPage;
 
     private boolean closed = false;
     private long safepointSequenceNo = 0L;
 
+    
+    public InMemoryJournalStorage() {
+        currentPage = new Page(String.valueOf(pageCounter++));
+    }
+    
     // -------------------------------------------------------------------------
     // Semantic write API (JournalStorage SPI)
     // -------------------------------------------------------------------------
 
     @Override
     public synchronized long insert(final long factHandleId, final Payload payload) {
+        checkOpen();
         return append(new InsertRecord(factHandleId, false, -1L, payload));
     }
 
     @Override
     public synchronized long insertLogical(final long factHandleId, final Payload payload,
                                            final long justifyingRuleMatchId) {
+        checkOpen();
         return append(new InsertRecord(factHandleId, true, justifyingRuleMatchId, payload));
     }
 
     @Override
     public synchronized long retract(final long factHandleId) {
+        checkOpen();
         return append(new RetractRecord(factHandleId));
     }
 
     @Override
     public synchronized long modify(final long factHandleId, final String lambdaClassRef, final byte[] params) {
+        checkOpen();
         return append(new ModifyRecord(factHandleId, lambdaClassRef, params));
     }
 
     @Override
     public synchronized long ruleMatch(final long id, final String packageName,
                                        final String ruleName, final long[] factHandleIds) {
+        checkOpen();
         return append(new RuleMatchRecord(id, packageName, ruleName, factHandleIds));
     }
 
     @Override
     public synchronized long compactionPrepare(final String preparingPageId, final String[] replacedPageIds) {
-        return append(new CompactionPrepareRecord(preparingPageId, replacedPageIds));
+        checkOpen();
+        CompactionPrepareRecord record = new CompactionPrepareRecord(preparingPageId, replacedPageIds);
+        catalog.records.add(record);
+        recordCounter++;
+		return recordCounter - 1;
     }
 
     @Override
     public synchronized long compactionCommit(final String mergedPageId, final String[] replacedPageIds) {
-        return append(new CompactionCommitRecord(mergedPageId, replacedPageIds));
+        checkOpen();
+        CompactionCommitRecord record = new CompactionCommitRecord(mergedPageId, replacedPageIds);
+        catalog.records.add(record);
+        recordCounter++;
+		return recordCounter - 1;
     }
 
     @Override
     public synchronized void safepoint() {
-        append(new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis()));
+        checkOpen();
+        SafepointRecord record = new SafepointRecord(safepointSequenceNo++, System.currentTimeMillis());
+		append(record);
+        
     }
 
     // -------------------------------------------------------------------------
@@ -119,39 +131,27 @@ public class InMemoryJournalStorage implements JournalStorage {
     public synchronized void writeMergedPage(final String pageId, final List<JournalRecord> records) {
         checkOpen();
         final Page page = new Page(pageId);
-        page.records.addAll(records);
         journal.add(page);
-        pageById.put(pageId, page);
+        page.records.addAll(records);
     }
 
     @Override
     public synchronized JournalScanner scan(final long fromPosition) {
         checkOpen();
-        final List<JournalRecord> flat = new ArrayList<>();
-        final List<String> pageIdsPerRecord = new ArrayList<>();
-        for (final Page page : journal) {
-            for (final JournalRecord r : page.records) {
-                flat.add(r);
-                pageIdsPerRecord.add(page.id);
-            }
-        }
-        for (final JournalRecord r : currentPage.records) {
-            flat.add(r);
-            pageIdsPerRecord.add(currentPage.id);
-        }
-        return new InMemoryJournalScanner(List.copyOf(flat), List.copyOf(pageIdsPerRecord), fromPosition);
+        
+        return InMemoryMultiQueueScanner.create(catalog, journal);
     }
 
     @Override
     public synchronized boolean isEmpty() {
         checkOpen();
-        return globalSize() == 0;
+        return recordCounter == 0;
     }
 
     @Override
     public synchronized long latestPosition() {
         checkOpen();
-        return globalSize() - 1;
+        return recordCounter - 1;
     }
 
     @Override
@@ -159,16 +159,12 @@ public class InMemoryJournalStorage implements JournalStorage {
         checkOpen();
         Set<String> toRetire = Set.of(pageIds);
         journal.removeIf(page -> toRetire.contains(page.id));
-        for (final String id : pageIds) {
-            pageById.remove(id);
-        }
     }
 
     @Override
     public synchronized void close() {
         closed = true;
     }
-
     // -------------------------------------------------------------------------
     // Test helpers
     // -------------------------------------------------------------------------
@@ -180,7 +176,7 @@ public class InMemoryJournalStorage implements JournalStorage {
 
     /** Total number of records in the raw journal plus the open page. */
     synchronized int size() {
-        return globalSize();
+        return recordCounter;
     }
 
     /** Convenience: insert a non-logical fact using EmbedStrategy. */
@@ -194,51 +190,66 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
 
     /** Convenience: safepoint with an explicit sequence number (for deterministic tests). */
-    void safepoint(final long sequenceNo) {
-        append(new SafepointRecord(sequenceNo, 0L));
+    synchronized void safepoint(final long sequenceNo) {
+        checkOpen();
+        SafepointRecord record = new SafepointRecord(sequenceNo, 0L);
+		append(record);
+		
     }
 
     /** Forces a physical page roll without a safepoint — simulates size-triggered rolling in tests. */
     synchronized void rollPage() {
         checkOpen();
-        journal.add(currentPage);
-        pageById.put(currentPage.id, currentPage);
         currentPage = new Page(String.valueOf(pageCounter++));
+        journal.add(currentPage);
     }
 
     /** Convenience: ruleMatch without an explicit package name. */
     void ruleMatch(final long id, final String ruleName, final long... factHandleIds) {
         ruleMatch(id, "test", ruleName, factHandleIds);
     }
+    
+    
+    synchronized List<Page> livePages() {
+    	return InMemoryMultiQueueScanner.build(catalog, journal).getLivePages();
+    }
 
+    synchronized List<Page> retiredPages() {
+    	return InMemoryMultiQueueScanner.build(catalog, journal).getRetiredPages();
+    }
+    
+    synchronized Page currentPage() {
+    	return currentPage;
+    }
+
+    
     @Override
     public String toString() {
-        return JournalPrinter.print(this);
+    	List<JournalRecord> records = new ArrayList<JournalRecord>();
+    	
+    	for (Page page: journal) {
+    		records.addAll(page.records);
+    	}
+    	records.addAll(currentPage.records);
+    	
+        return JournalPrinter.print(records);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private synchronized long append(final JournalRecord record) {
-        checkOpen();
+    private long append(final JournalRecord record) {
         currentPage.records.add(record);
+        recordCounter++;
 
         if (record instanceof SafepointRecord sp) {
+            catalog.records.add(new PageRecord(currentPage.id));
             journal.add(currentPage);
-            pageById.put(currentPage.id, currentPage);
             currentPage = new Page(String.valueOf(pageCounter++));
         }
 
-        return globalSize() - 1;
-    }
-
-    private int globalSize() {
-        int total = currentPage.records.size();
-        for (final Page page : journal) {
-            total += page.records.size();
-        }
-        return total;
+        return recordCounter - 1;
     }
 
     private void checkOpen() {
@@ -246,4 +257,5 @@ public class InMemoryJournalStorage implements JournalStorage {
             throw new IllegalStateException("InMemoryJournalStorage has been closed");
         }
     }
+
 }

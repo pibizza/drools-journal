@@ -15,72 +15,31 @@
  */
 package org.drools.journal.core;
 
-import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
-import org.drools.journal.api.SafepointRecord;
+import org.drools.journal.api.JournalStorage;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 final class PageIndex {
 
-    record PageIndexStatus(Set<String> livePages, Set<String> retiredPages) {}
+	record PageIndexStatus(Set<String> livePages, Set<String> retiredPages) {}
 
     private PageIndex() {}
 
-    static PageIndexStatus buildLivePageSet(final JournalScanner scanner) {
-        final List<String> pageIndex = new ArrayList<>();
-        final Map<String, String[]> pendingCommits = new LinkedHashMap<>();
-        final List<String> currentIntervalPages = new ArrayList<>();
-        final Set<String> retiredPages = new HashSet<>();
-        String lastPageId = null;
+    static PageIndexStatus buildLivePageSet(JournalStorage storage) {
+        try (JournalScanner scanner = storage.scan(0)) {
+            PageIndexCursor cursor = new PageIndexCursor();
+            while (scanner.hasNext()) {
+                final JournalRecord record = scanner.next();
+                final String pageId = scanner.currentPageId();
 
-        while (scanner.hasNext()) {
-            final JournalRecord record = scanner.next();
-            final String pageId = scanner.currentPageId();
-
-            if (!pageId.equals(lastPageId)) {
-                currentIntervalPages.add(pageId);
-                lastPageId = pageId;
+                cursor.move(pageId, record);
             }
 
-            if (record instanceof CompactionCommitRecord commit) {
-                pendingCommits.put(commit.mergedPageId(), commit.replacedPageIds());
-            } else if (record instanceof SafepointRecord) {
-                for (final Map.Entry<String, String[]> e : pendingCommits.entrySet()) {
-                    for (final String replaced : e.getValue()) {
-                        retiredPages.add(replaced);
-                    }
-                    spliceIntoIndex(pageIndex, e.getKey(), e.getValue());
-                }
-                pendingCommits.clear();
-                pageIndex.addAll(currentIntervalPages);
-                currentIntervalPages.clear();
-            }
-        }
-
-        return new PageIndexStatus(new HashSet<>(pageIndex), retiredPages);
-    }
-
-    static void spliceIntoIndex(final List<String> pageIndex,
-                                final String mergedId,
-                                final String[] replacedIds) {
-        final Set<String> retired = Set.of(replacedIds);
-        int insertPos = -1;
-        for (int i = 0; i < pageIndex.size(); i++) {
-            if (retired.contains(pageIndex.get(i))) {
-                insertPos = i;
-                break;
-            }
-        }
-        pageIndex.removeIf(retired::contains);
-        if (insertPos >= 0) {
-            pageIndex.add(insertPos, mergedId);
+            return cursor.getPageIndexStatus();
         }
     }
+
+    
 }

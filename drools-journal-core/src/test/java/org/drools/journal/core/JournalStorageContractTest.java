@@ -15,16 +15,13 @@
  */
 package org.drools.journal.core;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.drools.journal.api.InsertRecord;
-import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.Payload;
 import org.drools.journal.api.RetractRecord;
 import org.drools.journal.api.RuleMatchRecord;
+import org.drools.journal.api.SafepointRecord;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,11 +96,14 @@ public abstract class JournalStorageContractTest {
             storage.retract(0);
             storage.retract(1);
             storage.retract(2);
+            storage.safepoint();
 
             try (JournalScanner scanner = storage.scan(0)) {
-                assertThat(drain(scanner))
-                        .hasSize(3)
-                        .containsExactly(new RetractRecord(0), new RetractRecord(1), new RetractRecord(2));
+            	assertThat(scanner.next()).isEqualTo(new RetractRecord(0));
+            	assertThat(scanner.next()).isEqualTo(new RetractRecord(1));
+            	assertThat(scanner.next()).isEqualTo(new RetractRecord(2));
+            	assertThat(scanner.next()).isInstanceOf(SafepointRecord.class);
+            	assertThat(scanner.hasNext()).isFalse();
             }
         }
     }
@@ -112,13 +112,16 @@ public abstract class JournalStorageContractTest {
     void scan_multipleIndependentScannersOnSameStorage_doNotInterfere() {
         try (JournalStorage storage = createStorage()) {
             storage.retract(0);
-            storage.retract(1);
-            storage.retract(2);
+            storage.safepoint();
 
             try (JournalScanner s1 = storage.scan(0);
                  JournalScanner s2 = storage.scan(0)) {
-                assertThat(drain(s1)).containsExactly(new RetractRecord(0), new RetractRecord(1), new RetractRecord(2));
-                assertThat(drain(s2)).containsExactly(new RetractRecord(0), new RetractRecord(1), new RetractRecord(2));
+            	assertThat(s1.next()).isEqualTo(new RetractRecord(0));
+            	assertThat(s1.next()).isInstanceOf(SafepointRecord.class);
+            	assertThat(s1.hasNext()).isFalse();
+            	assertThat(s2.next()).isEqualTo(new RetractRecord(0));
+            	assertThat(s2.next()).isInstanceOf(SafepointRecord.class);
+            	assertThat(s2.hasNext()).isFalse();
             }
         }
     }
@@ -194,6 +197,7 @@ public abstract class JournalStorageContractTest {
         try (JournalStorage storage = createStorage()) {
             Payload payload = samplePayload();
             storage.insert(42L, payload);
+            storage.safepoint();
 
             try (JournalScanner scanner = storage.scan(0)) {
                 InsertRecord record = (InsertRecord) scanner.next();
@@ -210,6 +214,7 @@ public abstract class JournalStorageContractTest {
         try (JournalStorage storage = createStorage()) {
             Payload payload = samplePayload();
             storage.insertLogical(7L, payload, 99L);
+            storage.safepoint();
 
             try (JournalScanner scanner = storage.scan(0)) {
                 InsertRecord record = (InsertRecord) scanner.next();
@@ -224,6 +229,7 @@ public abstract class JournalStorageContractTest {
     void retract_producesRetractRecordInScan() {
         try (JournalStorage storage = createStorage()) {
             storage.retract(55L);
+            storage.safepoint();
 
             try (JournalScanner scanner = storage.scan(0)) {
                 RetractRecord record = (RetractRecord) scanner.next();
@@ -236,7 +242,7 @@ public abstract class JournalStorageContractTest {
     void ruleMatch_producesRuleMatchRecordInScan() {
         try (JournalStorage storage = createStorage()) {
             storage.ruleMatch(3L, "org.example", "myRule", new long[]{1L, 2L});
-
+            storage.safepoint();
             try (JournalScanner scanner = storage.scan(0)) {
                 RuleMatchRecord record = (RuleMatchRecord) scanner.next();
                 assertThat(record.id()).isEqualTo(3L);
@@ -245,15 +251,5 @@ public abstract class JournalStorageContractTest {
                 assertThat(record.factHandleIds()).containsExactly(1L, 2L);
             }
         }
-    }
-
-    // -------------------------------------------------------------------------
-    // helpers
-    // -------------------------------------------------------------------------
-
-    private static List<JournalRecord> drain(final JournalScanner scanner) {
-        List<JournalRecord> result = new ArrayList<>();
-        scanner.forEachRemaining(result::add);
-        return result;
     }
 }

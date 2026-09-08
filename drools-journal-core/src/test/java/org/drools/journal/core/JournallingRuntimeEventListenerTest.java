@@ -41,7 +41,7 @@ class JournallingRuntimeEventListenerTest {
         listener.objectInserted(insertedEvent(handle, "hello"));
 
         assertThat(storage.size()).isEqualTo(1);
-        InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.currentPage().records.get(0);
         assertThat(record.factHandleId()).isEqualTo(42L);
         assertThat(record.logical()).isFalse();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(-1L);
@@ -57,7 +57,7 @@ class JournallingRuntimeEventListenerTest {
         listener.objectDeleted(deletedEvent(handle, "hello"));
 
         assertThat(storage.size()).isEqualTo(1);
-        RetractRecord record = (RetractRecord) storage.scan(0).next();
+        RetractRecord record = (RetractRecord) storage.currentPage().records.get(0);
         assertThat(record.factHandleId()).isEqualTo(42L);
     }
 
@@ -71,7 +71,7 @@ class JournallingRuntimeEventListenerTest {
         DefaultFactHandle handle = new DefaultFactHandle(42L, "hello");
         listener.objectInserted(insertedEvent(handle, "hello"));
 
-        InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.currentPage().records.get(0);
         assertThat(record.logical()).isTrue();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(99L);
     }
@@ -86,7 +86,7 @@ class JournallingRuntimeEventListenerTest {
         listener.objectUpdated(updatedEvent(handle, "updated", "old"));
 
         assertThat(storage.size()).isEqualTo(1);
-        InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.currentPage().records.get(0);
         assertThat(record.factHandleId()).isEqualTo(42L);
         assertThat(record.logical()).isFalse();
         assertThat(record.justifyingRuleMatchId()).isEqualTo(-1L);
@@ -104,7 +104,7 @@ class JournallingRuntimeEventListenerTest {
         listener.objectUpdated(updatedEvent(handle, "updated", "old"));
 
         assertThat(storage.size()).isEqualTo(1);
-        ModifyRecord record = (ModifyRecord) storage.scan(0).next();
+        ModifyRecord record = (ModifyRecord) storage.currentPage().records.get(0);
         assertThat(record.factHandleId()).isEqualTo(42L);
         assertThat(record.lambdaClassRef()).isEqualTo("Rule_Test_modify_0");
     }
@@ -119,7 +119,7 @@ class JournallingRuntimeEventListenerTest {
         listener.objectUpdated(updatedEvent(handle, "updated", "old"));
 
         assertThat(storage.size()).isEqualTo(1);
-        InsertRecord record = (InsertRecord) storage.scan(0).next();
+        InsertRecord record = (InsertRecord) storage.currentPage().records.get(0);
         assertThat(record.factHandleId()).isEqualTo(42L);
     }
 
