@@ -214,7 +214,7 @@ class CompactionCoordinatorTest {
 
         int pageCountBefore = storage.currentPageNumber();
 
-        CompactionCoordinator.onDemand(storage).runCycle();
+        CompactionCoordinator.onDemand(storage).runMergingCycle();
 
         assertThat(storage.currentPageNumber()).isLessThan(pageCountBefore);
     }

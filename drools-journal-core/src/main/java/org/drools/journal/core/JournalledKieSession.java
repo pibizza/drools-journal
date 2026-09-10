@@ -52,7 +52,7 @@ public class JournalledKieSession extends StatefulKnowledgeSessionImpl {
 
     public void compactNow() {
         if (compactionCoordinator != null) {
-            compactionCoordinator.runCycle();
+            compactionCoordinator.runMergingCycle();
         }
     }
 

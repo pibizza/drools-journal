@@ -16,11 +16,13 @@
 package org.drools.journal.core;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.IndexStatus;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -257,5 +259,21 @@ public class InMemoryJournalStorage implements JournalStorage {
             throw new IllegalStateException("InMemoryJournalStorage has been closed");
         }
     }
+
+	@Override
+	public IndexStatus indexStatus() {
+		CatalogStatus catalogStatus = InMemoryMultiQueueScanner.build(catalog, journal);
+		
+		Set<String> livePageIds = new HashSet<>();
+		for (Page page: catalogStatus.getLivePages()) {
+			livePageIds.add(page.getId());
+		}
+		
+		Set<String> retiredPageIds = new HashSet<>();
+		for (Page page: catalogStatus.getRetiredPages()) {
+			retiredPageIds.add(page.getId());
+		}
+		return new IndexStatus(livePageIds, retiredPageIds);
+	}
 
 }

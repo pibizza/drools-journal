@@ -18,6 +18,7 @@ package org.drools.journal.core;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
+import org.drools.journal.api.IndexStatus;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.api.RetractRecord;
@@ -42,12 +43,15 @@ public class CompactionCoordinator {
     static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(60);
 
     private final JournalStorage storage;
-    private final Duration interval;
-    private ScheduledExecutorService scheduler;
+    private final Duration mergingInterval;
+    private final Duration retirementInterval;
+    private ScheduledExecutorService mergingExecutor;
+    private ScheduledExecutorService retirementExecutor;
 
-    CompactionCoordinator(final JournalStorage storage, final Duration interval) {
+    CompactionCoordinator(final JournalStorage storage, final Duration mergingInterval) {
         this.storage = storage;
-        this.interval = interval;
+        this.mergingInterval = mergingInterval;
+        this.retirementInterval = Duration.ZERO;
     }
 
     public static CompactionCoordinator onDemand(final JournalStorage storage) {
@@ -55,40 +59,50 @@ public class CompactionCoordinator {
     }
 
     void start() {
-        if (Duration.ZERO.equals(interval)) {
-            return;
-        }
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "drools-journal-compactor");
-            t.setDaemon(true);
-            return t;
-        });
-        long millis = interval.toMillis();
-        scheduler.scheduleWithFixedDelay(this::runCycle, millis, millis, TimeUnit.MILLISECONDS);
+    	mergingExecutor = startThread(mergingInterval, "drools-journal-merger", this::runMergingCycle);
+        
+    	retirementExecutor = startThread(retirementInterval, "drools-journal-retirement", this::runRetirementCycle);
     }
+
+	private ScheduledExecutorService startThread(Duration interval, String threadName, Runnable command) {
+        if (Duration.ZERO.equals(interval)) {
+        	return null;
+        }
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
+		    Thread t = new Thread(r, threadName);
+		    t.setDaemon(true);
+		    return t;
+		});
+		long millis = interval.toMillis();
+		executor.scheduleWithFixedDelay(command, millis, millis, TimeUnit.MILLISECONDS);
+		return executor;
+	}
+	
 
     void stop() {
-        if (scheduler == null) {
-            return;
-        }
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+    	stopThread(mergingExecutor);
+
+    	stopThread(retirementExecutor);
+    
     }
 
-    void runCycle() {
-        PageIndex.PageIndexStatus pageStatus = PageIndex.buildLivePageSet(storage);
+	private void stopThread(ScheduledExecutorService executor) {
+		if (executor == null) {
+			return;
+		}
+ 		executor.shutdown();
+		try {
+		    if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+		    	executor.shutdownNow();
+		    }
+		} catch (InterruptedException e) {
+			executor.shutdownNow();
+		    Thread.currentThread().interrupt();
+		}
+	}
 
-        if (!pageStatus.retiredPages().isEmpty()) {
-            storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
-        }
 
+    void runMergingCycle() {
         Map<String, long[]> liveness = scanLiveness();
         Set<String> candidates = new HashSet<>();
         liveness.forEach((id, counts) -> {
@@ -101,6 +115,14 @@ public class CompactionCoordinator {
         }
     }
 
+    void runRetirementCycle() {
+        IndexStatus pageStatus = storage.indexStatus();
+
+        if (!pageStatus.retiredPages().isEmpty()) {
+            storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
+        }
+    }
+    
     Map<String, long[]> scanLiveness() {
         final Map<String, long[]> liveness = new HashMap<>();
         final Map<Long, String> factToPage = new HashMap<>();

@@ -40,25 +40,6 @@ final class InMemoryMultiQueueScanner implements JournalScanner {
         this.nextRecordIndex = 0;
     }
 
-    static class CatalogStatus {
-    	private List<Page> livePages;
-		private List<Page> retiredPages;
-
-		CatalogStatus(List<Page> livePages, List<Page> retiredPages) {
-			this.livePages = livePages;
-			this.retiredPages = retiredPages;
-    		
-    	}
-
-		public List<Page> getLivePages() {
-			return livePages;
-		}
-
-		public List<Page> getRetiredPages() {
-			return retiredPages;
-		}
-    }
-    
     static InMemoryMultiQueueScanner create(final Page catalog, List<Page> pages) {
         CatalogStatus status = build(catalog, pages);
         return new InMemoryMultiQueueScanner(status.getLivePages());

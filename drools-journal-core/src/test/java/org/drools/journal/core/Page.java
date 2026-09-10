@@ -5,11 +5,15 @@ import java.util.List;
 
 import org.drools.journal.api.JournalRecord;
 
-final class Page {
+public final class Page {
     final String id;
     final List<JournalRecord> records = new ArrayList<>();
 
     Page(final String id) {
         this.id = id;
+    }
+    
+    public String getId() {
+    	return id;
     }
 }

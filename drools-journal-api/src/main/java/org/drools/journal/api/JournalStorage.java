@@ -115,14 +115,6 @@ public interface JournalStorage extends AutoCloseable {
      */
     void safepoint();
 
-    /**
-     * Deletes the physical storage for the given pages. Called only for pages
-     * whose retirement is sealed (caller's responsibility). Idempotent —
-     * silently ignores page IDs that do not exist.
-     *
-     * @param pageIds IDs of the pages to retire
-     */
-    void retirePages(String... pageIds);
 
     // -------------------------------------------------------------------------
     // Read API
@@ -151,6 +143,21 @@ public interface JournalStorage extends AutoCloseable {
      */
     long latestPosition();
 
+    IndexStatus indexStatus();
+    // -------------------------------------------------------------------------
+    // Compaction API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Deletes the physical storage for the given pages. Called only for pages
+     * whose retirement is sealed (caller's responsibility). Idempotent —
+     * silently ignores page IDs that do not exist.
+     *
+     * @param pageIds IDs of the pages to retire
+     */
+    void retirePages(String... pageIds);
+
+    
     /**
      * Writes a merged page produced by compaction. The page is stored in the
      * journal but is not part of the live page sequence until the caller calls

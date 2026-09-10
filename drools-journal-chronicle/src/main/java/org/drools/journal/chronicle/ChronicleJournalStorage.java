@@ -17,7 +17,9 @@ package org.drools.journal.chronicle;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import net.openhft.chronicle.core.io.IOTools;
 
@@ -26,6 +28,7 @@ import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.IndexStatus;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -305,4 +308,20 @@ public final class ChronicleJournalStorage implements JournalStorage {
             long currentPageBytes,
             long currentRecordCount) implements PageContext {
     }
+
+	@Override
+	public IndexStatus indexStatus() {
+		CatalogIndex catalogStatus = CatalogIndex.build(catalogQueue);
+		
+		Set<String> livePageIds = new HashSet<>();
+		for (String pageId: catalogStatus.livePages()) {
+			livePageIds.add(pageId);
+		}
+		
+		Set<String> retiredPageIds = new HashSet<>();
+		for (String pageId: catalogStatus.retiredPages()) {
+			retiredPageIds.add(pageId);
+		}
+		return new IndexStatus(livePageIds, retiredPageIds);
+	}
 }
