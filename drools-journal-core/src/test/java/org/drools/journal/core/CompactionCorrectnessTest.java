@@ -220,6 +220,65 @@ class CompactionCorrectnessTest {
         assertThat(result.survivingFacts()).containsKey(5L);
     }
 
+    @Test
+    void buildLivePageSet_noCompaction_returnsEmptyRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+        storage.insert(2L, "b");
+        storage.safepoint(1);
+
+        assertThat(storage.livePageIds()).containsExactly("0", "1");
+        assertThat(storage.retiredPageIds()).isEmpty();
+    }
+
+    @Test
+    void buildLivePageSet_sealedCompaction_returnsRetiredSourcePages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);          // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        storage.safepoint(1);          // seals the commit
+
+        
+        assertThat(storage.retiredPageIds()).containsExactly("0");
+    }
+
+    @Test
+    void buildLivePageSet_unsealedCompaction_returnsNoRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);          // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        assertThat(storage.retiredPageIds()).containsExactly("0");
+    }
+
+    @Test
+    void buildLivePageSet_twoSealedCompactions_accumulatesRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        // Round 1: page "0" is sparse, compact and seal
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        storage.safepoint(1);
+
+        // Round 2: page "2" is sparse, compact and seal
+        storage.insert(2L, "b");
+        storage.retract(2L);
+        storage.safepoint(2);
+        CompactionCoordinator.onDemand(storage).compact(Set.of("2"));
+        storage.safepoint(3);
+
+        assertThat(storage.retiredPageIds()).containsExactlyInAnyOrder("0", "2");
+    }
+    
     // -------------------------------------------------------------------------
     // helpers
     // -------------------------------------------------------------------------
