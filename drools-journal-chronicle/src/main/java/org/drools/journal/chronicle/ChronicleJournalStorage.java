@@ -17,9 +17,7 @@ package org.drools.journal.chronicle;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import net.openhft.chronicle.core.io.IOTools;
 
@@ -312,16 +310,6 @@ public final class ChronicleJournalStorage implements JournalStorage {
 	@Override
 	public IndexStatus indexStatus() {
 		CatalogIndex catalogStatus = CatalogIndex.build(catalogQueue);
-		
-		Set<String> livePageIds = new HashSet<>();
-		for (String pageId: catalogStatus.livePages()) {
-			livePageIds.add(pageId);
-		}
-		
-		Set<String> retiredPageIds = new HashSet<>();
-		for (String pageId: catalogStatus.retiredPages()) {
-			retiredPageIds.add(pageId);
-		}
-		return new IndexStatus(livePageIds, retiredPageIds);
+		return new IndexStatus(catalogStatus.livePages(), catalogStatus.retiredPages());
 	}
 }

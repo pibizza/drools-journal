@@ -137,3 +137,19 @@ Issue A (safepoint + thread-safety) complete. End-to-end restore tests added
 to `JournalledKieSessionRestoreTest` — Session 1 inserts/fires, Session 2
 opens on same storage and verifies working memory state and replay suppression.
 
+### 2026-09-11 · §Compaction Protocol (CompactionCoordinator)
+
+Retirement replay must derive live/retired classification purely from
+`catalog.records`, never from which pages are still physically present.
+`InMemoryJournalStorage.buildIndex()` was resolving each `PageRecord`'s id
+against the physical journal while doing pure id-bookkeeping — once
+`retirePages()` removed a page, a second `runRetirementCycle()` either
+threw or silently dropped the surviving merged page from `livePageIds()`,
+depending on how the physical lookup was guarded. Fixed by keeping
+`buildIndex()` entirely in id-space: it never touches the journal, so
+`IndexStatus` is a pure function of the catalog and repeated retirement
+cycles are idempotent by construction. Physical resolution (id → `Page`)
+stays isolated to `scan()`, downstream of classification.
+
+Part of issue #56's retirement gap.
+

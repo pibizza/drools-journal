@@ -16,8 +16,9 @@
 package org.drools.journal.core;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.drools.journal.api.CompactionCommitRecord;
@@ -140,8 +141,22 @@ public class InMemoryJournalStorage implements JournalStorage {
     @Override
     public synchronized JournalScanner scan(final long fromPosition) {
         checkOpen();
+        IndexStatus status = indexStatus();
+        Map<String, Page> pageIdToPages = new HashMap<>();
         
-        return InMemoryMultiQueueScanner.create(catalog, journal);
+        for (Page page: journal) {
+        	pageIdToPages.put(page.id, page);
+        }
+        
+        List<Page> livePages = new ArrayList<>();
+        
+        for (String pageId: status.livePageIds()) {
+        	if (pageIdToPages.get(pageId) != null) {
+        		livePages.add(pageIdToPages.get(pageId));
+        	}
+        }
+        
+        return new InMemoryMultiQueueScanner(livePages);
     }
 
     @Override
@@ -212,12 +227,12 @@ public class InMemoryJournalStorage implements JournalStorage {
     }
     
     
-    synchronized List<Page> livePages() {
-    	return InMemoryMultiQueueScanner.build(catalog, journal).getLivePages();
+    synchronized List<String> livePageIds() {
+    	return indexStatus().livePageIds();
     }
 
-    synchronized List<Page> retiredPages() {
-    	return InMemoryMultiQueueScanner.build(catalog, journal).getRetiredPages();
+    synchronized List<String> retiredPageIds() {
+    	return indexStatus().retiredPageIds();
     }
     
     synchronized Page currentPage() {
@@ -262,16 +277,43 @@ public class InMemoryJournalStorage implements JournalStorage {
 
 	@Override
 	public IndexStatus indexStatus() {
-		CatalogStatus catalogStatus = InMemoryMultiQueueScanner.build(catalog, journal);
+		return buildIndex();
+	}
+
+	IndexStatus buildIndex() {
+		List<String> livePageIds = new ArrayList<>();
+		List<String> retiredPageIds = new ArrayList<>();
+		List<String> bufferedPageIds = new ArrayList<>();
 		
-		Set<String> livePageIds = new HashSet<>();
-		for (Page page: catalogStatus.getLivePages()) {
-			livePageIds.add(page.getId());
+		for (JournalRecord record: catalog.records) {
+			if (record instanceof CompactionPrepareRecord cp) {
+				// ignore CompactionPrepare. We don't need anything here.
+			} else if (record instanceof CompactionCommitRecord cc) {
+		    	List<String> pagesToSkip = List.of(cc.replacedPageIds());
+				boolean addedMergedPage = false;
+				for (String bufferedPageId: bufferedPageIds) {
+					// the page is part of a Compaction Cycle? In that case we add only the merged page
+					if (pagesToSkip.contains(bufferedPageId)) {
+						if (!addedMergedPage) {
+							livePageIds.add(cc.mergedPageId());
+							addedMergedPage = true;
+						}
+						retiredPageIds.add(bufferedPageId);
+					} else {
+						livePageIds.add(bufferedPageId);
+					}
+				}
+				// we copied all the pages in the live pages, so we can restart accumulating
+				bufferedPageIds.clear();
+				
+			} else if (record instanceof PageRecord pr) {
+				bufferedPageIds.add(pr.pageId());
+			} 
+			
 		}
-		
-		Set<String> retiredPageIds = new HashSet<>();
-		for (Page page: catalogStatus.getRetiredPages()) {
-			retiredPageIds.add(page.getId());
+		// if we have no or partial compaction, we would miss some of the pages.
+		for (String bufferedPageId: bufferedPageIds) {
+			livePageIds.add(bufferedPageId);
 		}
 		return new IndexStatus(livePageIds, retiredPageIds);
 	}

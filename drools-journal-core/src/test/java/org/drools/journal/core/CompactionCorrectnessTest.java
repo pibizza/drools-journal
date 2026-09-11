@@ -43,8 +43,8 @@ class CompactionCorrectnessTest {
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
-        assertThat(storage.livePages()).hasSize(1);
-        assertThat(storage.retiredPages()).extracting(page->page.id).hasSize(2).containsExactlyInAnyOrder("0", "1");
+        assertThat(storage.livePageIds()).hasSize(1);
+        assertThat(storage.retiredPageIds()).hasSize(2).containsExactlyInAnyOrder("0", "1");
     }
 
     @Test

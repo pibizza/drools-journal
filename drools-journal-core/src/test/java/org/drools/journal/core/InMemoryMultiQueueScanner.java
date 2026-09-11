@@ -15,13 +15,8 @@
  */
 package org.drools.journal.core;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 
@@ -40,57 +35,7 @@ final class InMemoryMultiQueueScanner implements JournalScanner {
         this.nextRecordIndex = 0;
     }
 
-    static InMemoryMultiQueueScanner create(final Page catalog, List<Page> pages) {
-        CatalogStatus status = build(catalog, pages);
-        return new InMemoryMultiQueueScanner(status.getLivePages());
-    }
-
-    static CatalogStatus build(Page catalog, List<Page> pages) {
-    	List<Page> retiredPages = new ArrayList<>();
-    	List<Page> livePages = new ArrayList<>();
-    	Map<String, Page> pageIdToPage = new HashMap<>();
-    	
-    	for (Page page: pages) {
-    		pageIdToPage.put(page.id, page);
-    	}
-
-    	List<Page> bufferedPages = new ArrayList<>();
-    	
-    	
-		for (JournalRecord record: catalog.records) {
-			if (record instanceof CompactionPrepareRecord cp) {
-				// ignore CompactionPrepare. We don't need anything here.
-			} else if (record instanceof CompactionCommitRecord cc) {
-		    	List<String> pagesToSkip = List.of(cc.replacedPageIds());
-				boolean addedMergedPage = false;
-				for (Page bufferedPage: bufferedPages) {
-					// the page is part of a Compaction Cycle? In that case we add only the merged page
-					if (pagesToSkip.contains(bufferedPage.id)) {
-						if (!addedMergedPage) {
-							livePages.add(pageIdToPage.get(cc.mergedPageId()));
-							addedMergedPage = true;
-						}
-						retiredPages.add(bufferedPage);
-					} else {
-						livePages.add(bufferedPage);
-					}
-				}
-				// we copied all the pages in the live pages, so we can restart accumulating
-				bufferedPages.clear();
-				
-			} else if (record instanceof PageRecord pr) {
-				bufferedPages.add(pageIdToPage.get(pr.pageId()));
-			} 
-			
-		}
-		// if we have no or partial compaction, we would miss some of the pages.
-		for (Page bufferedPage: bufferedPages) {
-			livePages.add(bufferedPage);
-		}
-		return new CatalogStatus(livePages, retiredPages);
-	}
-
-	@Override
+    @Override
     public boolean hasNext() {
         return nextPageIndex < livePages.size() && nextRecordIndex < livePages.get(nextPageIndex).records.size();
     }

@@ -31,8 +31,8 @@ class PageIndexTest {
         storage.insert(2L, "b");
         storage.safepoint(1);
 
-        assertThat(storage.livePages()).extracting(page -> page.id).containsExactly("0", "1");
-        assertThat(storage.retiredPages()).isEmpty();
+        assertThat(storage.livePageIds()).containsExactly("0", "1");
+        assertThat(storage.retiredPageIds()).isEmpty();
     }
 
     @Test
@@ -46,7 +46,7 @@ class PageIndexTest {
         storage.safepoint(1);          // seals the commit
 
         
-        assertThat(storage.retiredPages()).extracting(page -> page.id).containsExactly("0");
+        assertThat(storage.retiredPageIds()).containsExactly("0");
     }
 
     @Test
@@ -58,7 +58,7 @@ class PageIndexTest {
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
 
-        assertThat(storage.retiredPages()).extracting(page->page.id).containsExactly("0");
+        assertThat(storage.retiredPageIds()).containsExactly("0");
     }
 
     @Test
@@ -79,6 +79,6 @@ class PageIndexTest {
         CompactionCoordinator.onDemand(storage).compact(Set.of("2"));
         storage.safepoint(3);
 
-        assertThat(storage.retiredPages()).extracting(page->page.id).containsExactlyInAnyOrder("0", "2");
+        assertThat(storage.retiredPageIds()).containsExactlyInAnyOrder("0", "2");
     }
 }

@@ -19,10 +19,12 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class CompactionCoordinatorTest {
 
@@ -217,6 +219,28 @@ class CompactionCoordinatorTest {
         CompactionCoordinator.onDemand(storage).runMergingCycle();
 
         assertThat(storage.currentPageNumber()).isLessThan(pageCountBefore);
+    }
+
+    @Test
+    void runRetirementCycle_calledTwiceAfterCompaction_isIdempotent() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);           // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+        storage.safepoint(1);           // seals the COMMIT
+
+        CompactionCoordinator coordinator = CompactionCoordinator.onDemand(storage);
+        coordinator.runRetirementCycle();   // first cycle: physically retires page "0" from the journal
+
+        List<String> livePageIds = storage.livePageIds();
+        List<String> retiredPageIds = storage.retiredPageIds();
+        
+        coordinator.runRetirementCycle();  // second cycle
+        
+        assertThat(storage.livePageIds()).isEqualTo(livePageIds);
+        assertThat(storage.retiredPageIds()).isEqualTo(retiredPageIds);
     }
 
     @Test

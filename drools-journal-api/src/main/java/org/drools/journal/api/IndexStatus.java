@@ -1,5 +1,5 @@
 package org.drools.journal.api;
 
-import java.util.Set;
+import java.util.List;
 
-public record IndexStatus(Set<String> livePages, Set<String> retiredPages) {}
+public record IndexStatus(List<String> livePageIds, List<String> retiredPageIds) {}

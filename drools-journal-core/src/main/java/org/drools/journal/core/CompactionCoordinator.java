@@ -118,8 +118,8 @@ public class CompactionCoordinator {
     void runRetirementCycle() {
         IndexStatus pageStatus = storage.indexStatus();
 
-        if (!pageStatus.retiredPages().isEmpty()) {
-            storage.retirePages(pageStatus.retiredPages().toArray(new String[0]));
+        if (!pageStatus.retiredPageIds().isEmpty()) {
+            storage.retirePages(pageStatus.retiredPageIds().toArray(new String[0]));
         }
     }
     
