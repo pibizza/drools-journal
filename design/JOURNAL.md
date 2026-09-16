@@ -137,6 +137,49 @@ Issue A (safepoint + thread-safety) complete. End-to-end restore tests added
 to `JournalledKieSessionRestoreTest` — Session 1 inserts/fires, Session 2
 opens on same storage and verifies working memory state and replay suppression.
 
+### 2026-09-10 · §Compaction Protocol (CompactionCoordinator)
+
+Two-tier catalog+data contract (issue #56) promoted from a Chronicle
+implementation detail to the explicit `JournalStorage` contract: `scan()`
+returns only live data pages in catalog order for both backends; compaction
+records live in the catalog, never in data pages.
+
+`CompactionCoordinator` split into two independent processes — merging
+(scan liveness, write merged pages for sparse pages) and retirement
+(physically delete pages the catalog marks as superseded) — each on its own
+`ScheduledExecutorService` with its own independently configurable `Duration`
+interval. They no longer share a thread or a cadence.
+
+`IndexStatus` (drools-journal-api) is a new shared live/retired-page-id shape,
+implemented by `InMemoryJournalStorage` (via `InMemoryMultiQueueScanner`) and
+`ChronicleJournalStorage` (via `CatalogIndex`, which now tracks retired pages
+explicitly). `CompactionCoordinator.runRetirementCycle()` now calls
+`storage.indexStatus()` instead of `PageIndex.buildLivePageSet()`, which was
+silently broken: it drove a cursor off `scan()` output, but compaction records
+never appear there, so it always returned an empty retired-page set — the
+scheduled auto-retirement path never actually retired anything. `PageIndex`/
+`PageIndexCursor` removed as dead code.
+
+Safepoint-sealing resolved as a non-issue rather than a design decision:
+catalog replay is deterministic and independent of the data-page safepoint
+sequence, so compaction commits apply immediately for both backends. The only
+invariant that matters — compaction only ever targets already-sealed
+(catalog-visible) pages — holds structurally, since `CompactionCoordinator`
+only discovers candidates via `scan()`.
+
+Known follow-up, not yet implemented: catalog replay has no way to know a page
+has already been physically retired. `InMemoryMultiQueueScanner.build()` (and
+likely `CatalogIndex` equivalently) re-resolves every historical
+`PageRecord`/`CompactionCommitRecord` on every replay; once `retirePages()`
+removes the underlying page, a second retirement cycle NPEs trying to resolve
+it. Needs an explicit page-retired tombstone record written into the catalog
+by `retirePages()` itself, so replay can skip already-retired pages instead of
+looking them up. Deferred.
+
+Known regression, not yet root-caused: `ChroniclePageRetirementIT` has 2
+failing tests (compact then reopen loses surviving facts) introduced
+somewhere in this round of changes.
+
 ### 2026-09-11 · §Compaction Protocol (CompactionCoordinator)
 
 Retirement replay must derive live/retired classification purely from
