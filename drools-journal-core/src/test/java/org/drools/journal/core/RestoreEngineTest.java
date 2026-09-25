@@ -158,7 +158,7 @@ class RestoreEngineTest {
         });
 
         // Serialize params the same way the listener does
-        byte[] params = serializeParams(new Object[]{ "world" });
+        byte[] params = JavaSerializer.serialize(new Object[]{ "world" });
         storage.modify(1L, "Rule_Test_modify_0", params);
         storage.safepoint(1L);
 
@@ -177,7 +177,7 @@ class RestoreEngineTest {
         registry.register("Rule_Test_modify_0",
                 (fact, params) -> ((int[]) fact)[0] = (int) params[0]);
 
-        byte[] params = serializeParams(new Object[]{ 99 });
+        byte[] params = JavaSerializer.serialize(new Object[]{ 99 });
         storage.modify(1L, "Rule_Test_modify_0", params);
         storage.safepoint(1L);
 
@@ -185,16 +185,6 @@ class RestoreEngineTest {
 
         int[] restored = (int[]) result.survivingFacts().get(1L);
         assertThat(restored[0]).isEqualTo(99);
-    }
-
-    private static byte[] serializeParams(final Object[] params) {
-        try (java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-             java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(bos)) {
-            oos.writeObject(params);
-            return bos.toByteArray();
-        } catch (java.io.IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     @Test

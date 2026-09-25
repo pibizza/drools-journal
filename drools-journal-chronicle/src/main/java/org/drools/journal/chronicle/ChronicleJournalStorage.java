@@ -26,6 +26,7 @@ import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import org.drools.journal.api.CompactionCommitRecord;
 import org.drools.journal.api.CompactionPrepareRecord;
+import org.drools.journal.api.IndexStatus;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
@@ -305,4 +306,10 @@ public final class ChronicleJournalStorage implements JournalStorage {
             long currentPageBytes,
             long currentRecordCount) implements PageContext {
     }
+
+	@Override
+	public IndexStatus indexStatus() {
+		CatalogIndex catalogStatus = CatalogIndex.build(catalogQueue);
+		return new IndexStatus(catalogStatus.livePages(), catalogStatus.retiredPages());
+	}
 }

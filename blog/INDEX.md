@@ -45,3 +45,4 @@
 | [2026-08-28-PaoloB01-the-proxy-that-recorded-calls.md](2026-08-28-PaoloB01-the-proxy-that-recorded-calls.md) | 2026-08-28 | Discovered Chronicle's methodWriter serializes calls not objects; prototyped InMemory catalog; impact assessment became issue #56 |
 | [2026-09-04-PaoloB01-the-scan-that-saw-too-much.md](2026-09-04-PaoloB01-the-scan-that-saw-too-much.md) | 2026-09-04 | Catalog-driven scan refactoring — separating catalog from data, snapshot semantics, safepoints as the only page boundary |
 | [2026-09-08-PaoloB01-the-branch-that-came-home.md](2026-09-08-PaoloB01-the-branch-that-came-home.md) | 2026-09-08 | Merged refactor/code-revision into main — toString vs scan fix, assessed #56 remaining work, convergence plan |
+| [2026-09-11-PaoloB01-page-that-forgot-it-was-retired.md](2026-09-11-PaoloB01-page-that-forgot-it-was-retired.md) | 2026-09-11 | Fixed double-retirement bug — buildIndex() made catalog-only, no journal lookups during classification |

@@ -19,6 +19,7 @@ import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.ModifyLambdaRegistry;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -43,8 +44,8 @@ class CompactionCorrectnessTest {
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
-        assertThat(storage.livePages()).hasSize(1);
-        assertThat(storage.retiredPages()).extracting(page->page.id).hasSize(2).containsExactlyInAnyOrder("0", "1");
+        assertThat(storage.livePageIds()).hasSize(1);
+        assertThat(storage.retiredPageIds()).hasSize(2).containsExactlyInAnyOrder("0", "1");
     }
 
     @Test
@@ -64,7 +65,7 @@ class CompactionCorrectnessTest {
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
 
-        // Fact 1 (live) appears only in Pm. The scanner returns ONLY sealed pages
+        // Fact 1 (live) appears only in Pm. The scanner returns ONLY live pages
         // Facts 2 is (retracted) never appears.
         List<JournalRecord> records = drainAll(storage);
         long insertCount1 = records.stream()
@@ -78,18 +79,21 @@ class CompactionCorrectnessTest {
     }
 
     @Test
-    void compact_afterSealingSafepoint_restoreShowsOnlyLiveFacts() {
+    void compact_restoreShowsOnlyLiveFacts() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
         storage.insert(1L, "live");
-        storage.insert(2L, "dead"); storage.insert(3L, "dead"); storage.insert(4L, "dead");
+        storage.insert(2L, "dead"); 
+        storage.insert(3L, "dead"); 
+        storage.insert(4L, "dead");
         storage.safepoint(0);
         // Page "1": retract those 3 → 0% live, sparse
-        storage.retract(2L); storage.retract(3L); storage.retract(4L);
+        storage.retract(2L); 
+        storage.retract(3L); 
+        storage.retract(4L);
         storage.safepoint(1);
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        storage.safepoint(2); // seals the COMMIT — simulates next fireAllRules()
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
         assertThat(result.survivingFacts()).hasSize(1);
@@ -117,29 +121,7 @@ class CompactionCorrectnessTest {
     }
 
     @Test
-    void crashAfterCommit_beforeSafepoint_restoreUsesOriginalPages() {
-        InMemoryJournalStorage storage = new InMemoryJournalStorage();
-        // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
-        storage.insert(1L, "a");
-        storage.insert(2L, "b"); storage.insert(3L, "c"); storage.insert(4L, "d");
-        storage.safepoint(0);
-        // Page "1": retract those 3 → 0% live, sparse
-        storage.retract(2L); storage.retract(3L); storage.retract(4L);
-        storage.safepoint(1);
-        // compact() runs but crashes before the sealing safepoint
-        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        // No safepoint — COMMIT is unsealed, original pages remain canonical
-
-        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
-
-        // COMMIT not sealed → original pages still canonical — fact 1 survives
-        assertThat(result.survivingFacts()).hasSize(1);
-        assertThat(result.survivingFacts()).containsKey(1L);
-    }
-
-
-    @Test
-    void twoSequentialCompactions_eachSealedCorrectly() {
+    void twoSequentialCompactions_bothCorrect() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
 
         // Round 1: fact 1 survives, facts 2-4 die
@@ -149,16 +131,14 @@ class CompactionCorrectnessTest {
         storage.retract(2L); storage.retract(3L); storage.retract(4L);
         storage.safepoint(1);
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        storage.safepoint(2); // seals round 1
 
         // Round 2: fact 5 survives, facts 6-8 die
         storage.insert(5L, "keep");
         storage.insert(6L, "drop"); storage.insert(7L, "drop"); storage.insert(8L, "drop");
-        storage.safepoint(3);
+        storage.safepoint(2);
         storage.retract(6L); storage.retract(7L); storage.retract(8L);
-        storage.safepoint(4);
-        CompactionCoordinator.onDemand(storage).compact(Set.of("3", "4"));
-        storage.safepoint(5); // seals round 2
+        storage.safepoint(3);
+        CompactionCoordinator.onDemand(storage).compact(Set.of("2", "3"));
 
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
@@ -211,8 +191,6 @@ class CompactionCorrectnessTest {
             pool.shutdown();
         }
 
-        storage.safepoint(4); // seals both COMMITs
-
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
 
         assertThat(result.survivingFacts()).hasSize(2);
@@ -220,6 +198,62 @@ class CompactionCorrectnessTest {
         assertThat(result.survivingFacts()).containsKey(5L);
     }
 
+    @Test
+    void buildLivePageSet_noCompaction_returnsEmptyRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+        storage.insert(2L, "b");
+        storage.safepoint(1);
+
+        assertThat(storage.livePageIds()).containsExactly("0", "1");
+        assertThat(storage.retiredPageIds()).isEmpty();
+    }
+
+    @Test
+    void buildLivePageSet_returnsRetiredSourcePages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);          // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        
+        assertThat(storage.retiredPageIds()).containsExactly("0");
+    }
+
+    @Test
+    void buildLivePageSet_retireOnePage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);          // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        assertThat(storage.retiredPageIds()).containsExactly("0");
+    }
+
+    @Test
+    void buildLivePageSet_accumulatesRetiredPages() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+
+        // Round 1: page "0" is sparse, compact and seal
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // Round 2: page "2" is sparse, compact and seal
+        storage.insert(2L, "b");
+        storage.retract(2L);
+        storage.safepoint(1);
+        CompactionCoordinator.onDemand(storage).compact(Set.of("1"));
+
+        assertThat(storage.retiredPageIds()).containsExactlyInAnyOrder("0", "1");
+    }
+    
     // -------------------------------------------------------------------------
     // helpers
     // -------------------------------------------------------------------------

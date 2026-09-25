@@ -16,6 +16,7 @@
 package org.drools.journal.chronicle.internal;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import net.openhft.chronicle.bytes.MethodReader;
@@ -24,12 +25,13 @@ import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 
 public final class CatalogIndex implements ChronicleCatalogWriteOps {
 
-    private final List<String> pages = new ArrayList<>();
+    private final List<String> livePages = new ArrayList<>();
+    private final List<String> retiredPages = new ArrayList<>();
     private int highestPageCounter;
 
     @Override
     public void pageCreated(final int pageId) {
-        pages.add(String.valueOf(pageId));
+        livePages.add(String.valueOf(pageId));
         if (pageId > highestPageCounter) {
             highestPageCounter = pageId;
         }
@@ -41,15 +43,21 @@ public final class CatalogIndex implements ChronicleCatalogWriteOps {
 
     @Override
     public void compactionCommit(final String mergedPageId, final String... replacedPageIds) {
-        List<String> spliced = spliceIntoIndex(pages, mergedPageId, replacedPageIds);
-        pages.clear();
-        pages.addAll(spliced);
+        List<String> spliced = spliceIntoIndex(livePages, mergedPageId, replacedPageIds);
+        livePages.clear();
+        livePages.addAll(spliced);
+        retiredPages.addAll(Arrays.asList(replacedPageIds));
     }
 
     public List<String> livePages() {
-        return List.copyOf(pages);
+        return List.copyOf(livePages);
     }
 
+    public List<String> retiredPages() {
+        return List.copyOf(retiredPages);
+    }
+
+    
     public int highestPageCounter() {
         return highestPageCounter;
     }

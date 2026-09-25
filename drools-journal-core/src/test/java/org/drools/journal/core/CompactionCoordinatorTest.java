@@ -15,7 +15,6 @@
  */
 package org.drools.journal.core;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -201,22 +200,42 @@ class CompactionCoordinatorTest {
         assertThat(storage.currentPageNumber()).isEqualTo(1);
     }
 
-    @Disabled
     @Test
-    void runCycle_afterSealedCompaction_retiresSourcePages() {
+    void runRetirementCycle_retiresSourcePages() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.retract(1L);
         storage.safepoint(0);           // page "0": 0% live
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
-        storage.safepoint(1);           // seals the COMMIT
 
         int pageCountBefore = storage.currentPageNumber();
 
-        CompactionCoordinator.onDemand(storage).runCycle();
+        CompactionCoordinator.onDemand(storage).runRetirementCycle();
 
         assertThat(storage.currentPageNumber()).isLessThan(pageCountBefore);
+    }
+
+    @Test
+    void runRetirementCycle_calledTwiceAfterCompaction_isIdempotent() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.retract(1L);
+        storage.safepoint(0);           // page "0": 0% live
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        CompactionCoordinator coordinator = CompactionCoordinator.onDemand(storage);
+
+        int pageCountBefore = storage.currentPageNumber();
+        
+        coordinator.runRetirementCycle();   // first cycle: physically retires page "0" from the journal
+
+        assertThat(storage.currentPageNumber()).isEqualTo(pageCountBefore - 1);
+        
+        coordinator.runRetirementCycle();  // second cycle
+        
+        assertThat(storage.currentPageNumber()).isEqualTo(pageCountBefore - 1);
     }
 
     @Test
@@ -239,7 +258,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void scanLiveness_afterSealedCompaction_excludesRetiredPages() {
+    void scanLiveness_excludesRetiredPages() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.insert(2L, "b");
@@ -252,7 +271,6 @@ class CompactionCoordinatorTest {
         storage.safepoint(1);            // page "1": 3 retracts
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        storage.safepoint(2);            // seals the COMMIT — pages "0" and "1" are retired
 
         Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
@@ -261,7 +279,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void scanLiveness_afterSealedCompaction_includesMergedPage() {
+    void scanLiveness_includesMergedPage() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.insert(2L, "b");
@@ -274,7 +292,6 @@ class CompactionCoordinatorTest {
         storage.safepoint(1);
 
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        storage.safepoint(2);
 
         Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
@@ -300,9 +317,10 @@ class CompactionCoordinatorTest {
         storage.retract(4L);
         storage.safepoint(1);
         CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
-        storage.safepoint(2);  // seals round 1
 
-        // Round 2: pages "3" and "4" compacted, fact 5 survives
+        // Round 2: pages "2" and "3" compacted, fact 5 survives.
+        // Page ids come from the storage's page counter (0,1,2,3,...), which is
+        // independent of the safepoint sequence numbers passed below.
         storage.insert(5L, "keep");
         storage.insert(6L, "drop");
         storage.insert(7L, "drop");
@@ -312,22 +330,21 @@ class CompactionCoordinatorTest {
         storage.retract(7L);
         storage.retract(8L);
         storage.safepoint(4);
-        CompactionCoordinator.onDemand(storage).compact(Set.of("3", "4"));
-        storage.safepoint(5);  // seals round 2
+        CompactionCoordinator.onDemand(storage).compact(Set.of("2", "3"));
 
         Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         assertThat(liveness).doesNotContainKey("0");
         assertThat(liveness).doesNotContainKey("1");
+        assertThat(liveness).doesNotContainKey("2");
         assertThat(liveness).doesNotContainKey("3");
-        assertThat(liveness).doesNotContainKey("4");
         // Only the two merged pages should remain
         assertThat(liveness).hasSize(2);
         assertThat(liveness.keySet()).allSatisfy(id -> assertThat(id).startsWith("m-"));
     }
 
     @Test
-    void scanLiveness_unsealedCompaction_sourcePagesSurvive() {
+    void scanLiveness_sourcePagesSurvive() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.insert(2L, "b");

@@ -5,8 +5,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyLambda;
@@ -40,9 +38,6 @@ public class ScanCursor {
 	public void move(final JournalRecord record, final String pageId) {
         if (record instanceof SafepointRecord) {
         	// Nothing to do here
-        } else if (record instanceof CompactionPrepareRecord
-                || record instanceof CompactionCommitRecord) {
-            // compaction markers — no action
         } else if (record instanceof InsertRecord insert) {
             survivingFacts.put(insert.factHandleId(), strategy.load(insert.payload()));
             if (insert.logical()) {

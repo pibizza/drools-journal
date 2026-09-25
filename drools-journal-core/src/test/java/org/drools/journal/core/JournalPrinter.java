@@ -22,8 +22,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.EmbeddedPayload;
 import org.drools.journal.api.ExternalRef;
 import org.drools.journal.api.InsertRecord;
@@ -57,10 +55,6 @@ public final class JournalPrinter {
         if (record instanceof RuleMatchRecord r)         return renderMatch(r);
         if (record instanceof SafepointRecord r)         return "SAFEPOINT  seq=" + r.sequenceNo();
         if (record instanceof ModifyRecord r)            return "MODIFY  id=" + r.factHandleId() + "  lambda=" + r.lambdaClassRef();
-        if (record instanceof CompactionPrepareRecord r) return "COMPACT_PREPARE  page=" + r.preparingPageId()
-                + "  replacing=" + Arrays.toString(r.replacedPageIds());
-        if (record instanceof CompactionCommitRecord r)  return "COMPACT_COMMIT  page=" + r.mergedPageId()
-                + "  retired=" + Arrays.toString(r.replacedPageIds());
         return "UNKNOWN  " + record.getClass().getSimpleName();
     }
 
