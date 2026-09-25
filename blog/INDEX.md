@@ -46,3 +46,4 @@
 | [2026-09-04-PaoloB01-the-scan-that-saw-too-much.md](2026-09-04-PaoloB01-the-scan-that-saw-too-much.md) | 2026-09-04 | Catalog-driven scan refactoring — separating catalog from data, snapshot semantics, safepoints as the only page boundary |
 | [2026-09-08-PaoloB01-the-branch-that-came-home.md](2026-09-08-PaoloB01-the-branch-that-came-home.md) | 2026-09-08 | Merged refactor/code-revision into main — toString vs scan fix, assessed #56 remaining work, convergence plan |
 | [2026-09-11-PaoloB01-page-that-forgot-it-was-retired.md](2026-09-11-PaoloB01-page-that-forgot-it-was-retired.md) | 2026-09-11 | Fixed double-retirement bug — buildIndex() made catalog-only, no journal lookups during classification |
+| [2026-09-26-PaoloB01-flake-that-got-its-issue.md](2026-09-26-PaoloB01-flake-that-got-its-issue.md) | 2026-09-26 | Closed #56 (two-tier catalog contract merged via PR #59); opened #58 to review Chronicle impl and stabilise the flaky ChroniclePageRetirementIT |
