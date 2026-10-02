@@ -35,9 +35,11 @@ class SpliceIntoIndexTest {
         assertThat(result).containsExactly("m-1", "1", "3");
     }
 
-    // TODO: test reverse-order and unknown replacedIds once we decide
-    // whether to enforce the "replacedIds in list order" precondition
-    // or handle it defensively.
+    @Test
+    void replacedIdsInReverseOrder_mergedAtFirstReplacedPosition() {
+        List<String> result = CatalogIndex.spliceIntoIndex(List.of("0", "1", "2"), "m-1", "1", "0");
+        assertThat(result).containsExactly("m-1", "2");
+    }
 
     @Test
     void allPagesReplaced_resultIsSingleMergedPage() {
