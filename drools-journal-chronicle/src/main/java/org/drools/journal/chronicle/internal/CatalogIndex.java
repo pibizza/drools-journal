@@ -18,6 +18,7 @@ package org.drools.journal.chronicle.internal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import net.openhft.chronicle.bytes.MethodReader;
 import net.openhft.chronicle.queue.ExcerptTailer;
@@ -77,16 +78,19 @@ public final class CatalogIndex implements ChronicleCatalogWriteOps {
         if (replacedIds.length == 0) {
             return new ArrayList<>(pageIndex);
         }
-        List<String> result = new ArrayList<>(pageIndex);
-        int r = replacedIds.length - 1;
-        for (int i = result.size() - 1; i >= 0 && r >= 0; i--) {
-            if (result.get(i).equals(replacedIds[r])) {
-                if (r == 0) {
-                    result.set(i, mergedId);
-                } else {
-                    result.remove(i);
+        Set<String> idsToReplace = Set.of(replacedIds);
+        List<String> result = new ArrayList<>(pageIndex.size());
+        boolean mergePageAlreadyInserted = false;
+
+        for (final String pageId : pageIndex) {
+            if (idsToReplace.contains(pageId)) {
+                if (!mergePageAlreadyInserted) {
+                    result.add(mergedId);
+                    mergePageAlreadyInserted = true;
                 }
-                r--;
+                // subsequent replaced pages collapse into the merged page: drop
+            } else {
+                result.add(pageId);
             }
         }
         return result;
