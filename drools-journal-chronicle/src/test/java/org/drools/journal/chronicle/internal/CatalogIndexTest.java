@@ -65,7 +65,6 @@ class CatalogIndexTest {
             ChronicleCatalogWriteOps writer = catalog.acquireAppender().methodWriter(ChronicleCatalogWriteOps.class);
             writer.pageCreated(0);
             writer.pageCreated(1);
-            writer.compactionPrepare("m-1", "0", "1");
 
             CatalogIndex index = CatalogIndex.build(catalog);
             assertThat(index.livePages()).containsExactly("0", "1");

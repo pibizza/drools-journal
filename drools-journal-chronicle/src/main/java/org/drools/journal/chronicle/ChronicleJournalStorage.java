@@ -24,8 +24,6 @@ import net.openhft.chronicle.core.io.IOTools;
 import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
-import org.drools.journal.api.CompactionCommitRecord;
-import org.drools.journal.api.CompactionPrepareRecord;
 import org.drools.journal.api.IndexStatus;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
@@ -293,10 +291,7 @@ public final class ChronicleJournalStorage implements JournalStorage {
                     w.ruleMatch(rm.id(), rm.packageName(), rm.ruleName(), rm.factHandleIds());
             case SafepointRecord sr ->
                     w.safepoint(sr.sequenceNo(), sr.timestamp());
-            case CompactionPrepareRecord ignored ->
-                    throw new IllegalArgumentException("CompactionPrepareRecord belongs in the catalog, not data pages");
-            case CompactionCommitRecord ignored ->
-                    throw new IllegalArgumentException("CompactionCommitRecord belongs in the catalog, not data pages");
+
 		default -> throw new IllegalArgumentException("Unexpected value: " + record);
         }
     }
