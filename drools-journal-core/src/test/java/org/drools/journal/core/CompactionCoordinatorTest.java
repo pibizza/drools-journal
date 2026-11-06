@@ -105,7 +105,7 @@ class CompactionCoordinatorTest {
     }
 
     @Test
-    void modifyRecord_inLivenessTracking_countsInTotalOnly() {
+    void modifyRecord_forLiveFact_countsAsLive() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
         storage.modify(1L, "Rule_MyRule_modify_0", new byte[0]);
@@ -114,8 +114,28 @@ class CompactionCoordinatorTest {
         Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
 
         long[] counts = liveness.get("0");
-        assertThat(counts[0]).isEqualTo(1L); // liveCount — modify does not contribute
-        assertThat(counts[1]).isEqualTo(2L); // totalCount — modify is counted
+        // A modify is the current state of a live fact, so it counts as live content —
+        // otherwise a page holding live-fact deltas scores as sparse and gets merged away.
+        assertThat(counts[0]).isEqualTo(2L); // liveCount — insert + modify both live
+        assertThat(counts[1]).isEqualTo(2L); // totalCount — both records occupy space
+    }
+
+    @Test
+    void retract_onLaterPageThanModify_decrementsLiveCountOnModifyPage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);        // page "0": [insert(1)]
+        storage.modify(1L, "Rule_MyRule_modify_0", new byte[0]);
+        storage.safepoint(1);        // page "1": [modify(1)]
+        storage.retract(1L);
+        storage.safepoint(2);        // page "2": [retract(1)]
+
+        Map<String, long[]> liveness = CompactionCoordinator.onDemand(storage).scanLiveness();
+
+        // Retract reverses the fact's live contribution on every page it touched —
+        // the modify page becomes dead weight, not just the insert page.
+        assertThat(liveness.get("0")[0]).isEqualTo(0L); // insert no longer live
+        assertThat(liveness.get("1")[0]).isEqualTo(0L); // modify no longer live
     }
 
     @Test

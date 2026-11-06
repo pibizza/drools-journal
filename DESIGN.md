@@ -270,8 +270,10 @@ page ID. See ADR-0001.
 rescan (not write-path interception) on a daemon background thread
 (`drools-journal-compactor`) at a configurable interval (default 60 s).
 The coordinator is stateless between polls. Tracks `pageId → (liveCount,
-totalCount)`. When `liveCount / totalCount < 0.30`, the page becomes a
-compaction candidate.
+totalCount)`. A fact's live records — its insert and any modify deltas —
+each count toward `liveCount` on whichever page they occupy; a retract
+reverses that fact's live contribution on *every* such page. When
+`liveCount / totalCount < 0.30`, the page becomes a compaction candidate.
 
 **Session lifecycle:** `JournalledSessionFactory.open(kbase, storage, Duration)`
 creates and starts the coordinator; the one-arg overload delegates with

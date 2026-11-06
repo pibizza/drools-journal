@@ -125,7 +125,10 @@ public class CompactionCoordinator {
     
     Map<String, long[]> scanLiveness() {
         final Map<String, long[]> liveness = new HashMap<>();
-        final Map<Long, String> factToPage = new HashMap<>();
+        // A fact's live state can span several pages: its insert plus every page it was
+        // modified on. We track all of them so a retract can reverse the fact's live
+        // contribution everywhere, not just on its insert page.
+        final Map<Long, List<String>> factToPages = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
         String lastPageId = null;
 
@@ -136,13 +139,13 @@ public class CompactionCoordinator {
 
                 // Physical page boundary (size-triggered roll, no SafepointRecord)
                 if (!pageId.equals(lastPageId) && lastPageId != null) {
-                	flushPageLiveness(lastPageId, pending, liveness, factToPage);
+                	flushPageLiveness(lastPageId, pending, liveness, factToPages);
                     pending.clear();
                 }
                 lastPageId = pageId;
 
                 if (record instanceof SafepointRecord) {
-                	flushPageLiveness(pageId, pending, liveness, factToPage);
+                	flushPageLiveness(pageId, pending, liveness, factToPages);
                     pending.clear();
                 } else {
                     pending.add(record);
@@ -157,27 +160,41 @@ public class CompactionCoordinator {
     private static void flushPageLiveness(final String pageId,
                                           final List<JournalRecord> pending,
                                           final Map<String, long[]> liveness,
-                                          final Map<Long, String> factToPage) {
+                                          final Map<Long, List<String>> factToPages) {
         if (pending.isEmpty()) {
             return;
         }
         liveness.computeIfAbsent(pageId, k -> new long[2]);
         for (final JournalRecord r : pending) {
             if (r instanceof InsertRecord insert) {
+                // A re-insert supersedes any prior live state for the fact.
+                reverseLiveness(insert.factHandleId(), liveness, factToPages);
                 liveness.get(pageId)[0]++;
                 liveness.get(pageId)[1]++;
-                String previousPage = factToPage.put(insert.factHandleId(), pageId);
-                if (previousPage != null) {
-                    liveness.get(previousPage)[0]--;
-                }
-            } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
+                factToPages.computeIfAbsent(insert.factHandleId(), k -> new ArrayList<>()).add(pageId);
+            } else if (r instanceof ModifyRecord modify) {
+                // A modify is current state of a live fact — live content, like an insert.
+                liveness.get(pageId)[0]++;
+                liveness.get(pageId)[1]++;
+                factToPages.computeIfAbsent(modify.factHandleId(), k -> new ArrayList<>()).add(pageId);
+            } else if (r instanceof RuleMatchRecord) {
                 liveness.get(pageId)[1]++;
             } else if (r instanceof RetractRecord retract) {
                 liveness.get(pageId)[1]++;
-                final String origin = factToPage.remove(retract.factHandleId());
-                if (origin != null) {
-                    liveness.get(origin)[0]--;
-                }
+                reverseLiveness(retract.factHandleId(), liveness, factToPages);
+            }
+        }
+    }
+
+    // Drops a fact's live contribution from every page that held it (insert + modifies),
+    // leaving each page's total untouched. Used on retract and on re-insert supersession.
+    private static void reverseLiveness(final long factHandleId,
+                                        final Map<String, long[]> liveness,
+                                        final Map<Long, List<String>> factToPages) {
+        final List<String> origins = factToPages.remove(factHandleId);
+        if (origins != null) {
+            for (final String origin : origins) {
+                liveness.get(origin)[0]--;
             }
         }
     }
