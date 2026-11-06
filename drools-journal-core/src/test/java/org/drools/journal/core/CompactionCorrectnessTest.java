@@ -147,6 +147,45 @@ class CompactionCorrectnessTest {
     }
 
     @Test
+    void compact_mergedPageOfLiveFactWithModify_carriesModifyForward() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": fact 1 inserted then modified — both live, on the SAME page.
+        storage.insert(1L, "original");
+        storage.modify(1L, "Rule_Test_modify_0", new byte[]{1});
+        storage.safepoint(0);
+
+        // Force-merge the page directly to isolate the merge step from selection.
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // The merge rebuilds the page from live facts. The live fact's modify delta must
+        // be carried into the merged page — otherwise restore replays only the original
+        // insert and the fact silently reverts to "original".
+        List<JournalRecord> records = drainAll(storage);
+        long modifyCount = records.stream()
+                .filter(r -> r instanceof ModifyRecord mr && mr.factHandleId() == 1L)
+                .count();
+        assertThat(modifyCount).isEqualTo(1);
+    }
+
+    @Test
+    void mergingCycle_sparsePagesSeparatedByLivePage_doesNotMergeAcrossTheGap() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a"); storage.retract(1L); storage.safepoint(0); // page "0": sparse
+        storage.insert(2L, "b"); storage.retract(2L); storage.safepoint(1); // page "1": sparse (contiguous with "0")
+        storage.insert(3L, "c"); storage.safepoint(2);                      // page "2": live — the gap
+        storage.insert(4L, "d"); storage.retract(4L); storage.safepoint(3); // page "3": sparse (isolated after the gap)
+
+        CompactionCoordinator.onDemand(storage).runMergingCycle();
+
+        // The contiguous sparse run {"0","1"} may be merged, but page "3" is separated from
+        // it by the live page "2". Merging "3" into the same page would collapse records that
+        // straddle a still-live page and reorder the journal, so it must never be compacted
+        // across the gap.
+        assertThat(storage.retiredPageIds()).contains("0", "1"); // contiguous run still compacts
+        assertThat(storage.retiredPageIds()).doesNotContain("3"); // isolated page left alone
+    }
+
+    @Test
     void crashAfterPrepare_restoreUsesOriginalPages() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         // Page "0": 4 inserts, 3 later retracted → 25% live, sparse
