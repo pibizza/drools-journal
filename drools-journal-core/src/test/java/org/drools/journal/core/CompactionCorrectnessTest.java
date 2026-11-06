@@ -19,6 +19,7 @@ import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.JournalScanner;
 import org.drools.journal.api.ModifyLambdaRegistry;
+import org.drools.journal.api.ModifyRecord;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -98,6 +99,90 @@ class CompactionCorrectnessTest {
         RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
         assertThat(result.survivingFacts()).hasSize(1);
         assertThat(result.survivingFacts()).containsKey(1L);
+    }
+
+    @Test
+    void compact_liveFactWithModifyDelta_preservesModifyRecord() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": one live insert → liveCount=1/totalCount=1 → 100%, NOT sparse.
+        storage.insert(1L, "original");
+        storage.safepoint(0);
+        // Page "1": one modify delta for the (still live) fact → liveCount=0/totalCount=1 → 0%, sparse.
+        storage.modify(1L, "Rule_Test_modify_0", new byte[]{1});
+        storage.safepoint(1);
+
+        // The merging cycle selects sparse pages. The modify-only page looks sparse even
+        // though fact 1 is live and its current state depends on that delta.
+        CompactionCoordinator.onDemand(storage).runMergingCycle();
+
+        // Fact 1 is live, so its modify delta must survive compaction — otherwise restore
+        // replays only the original insert and the fact silently reverts to "original".
+        List<JournalRecord> records = drainAll(storage);
+        long modifyCount = records.stream()
+                .filter(r -> r instanceof ModifyRecord mr && mr.factHandleId() == 1L)
+                .count();
+        assertThat(modifyCount).isEqualTo(1);
+    }
+
+    @Test
+    void compact_insertModifyRetractLifecycle_leavesNoRecordOfDeadFact() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Full lifecycle of fact 1 in page "0": inserted, modified, then retracted.
+        storage.insert(1L, "a");
+        storage.modify(1L, "Rule_Test_modify_0", new byte[]{1});
+        storage.retract(1L);
+        storage.safepoint(0);
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // The fact is dead, so NOTHING about it may survive — neither the original insert
+        // nor an orphan modify delta. (Pins the other edge of the merge contract: carrying
+        // modifies forward must not resurrect records of a retracted fact.)
+        List<JournalRecord> records = drainAll(storage);
+        long survivors = records.stream()
+                .filter(r -> (r instanceof InsertRecord ir && ir.factHandleId() == 1L)
+                        || (r instanceof ModifyRecord mr && mr.factHandleId() == 1L))
+                .count();
+        assertThat(survivors).isEqualTo(0);
+    }
+
+    @Test
+    void compact_mergedPageOfLiveFactWithModify_carriesModifyForward() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": fact 1 inserted then modified — both live, on the SAME page.
+        storage.insert(1L, "original");
+        storage.modify(1L, "Rule_Test_modify_0", new byte[]{1});
+        storage.safepoint(0);
+
+        // Force-merge the page directly to isolate the merge step from selection.
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // The merge rebuilds the page from live facts. The live fact's modify delta must
+        // be carried into the merged page — otherwise restore replays only the original
+        // insert and the fact silently reverts to "original".
+        List<JournalRecord> records = drainAll(storage);
+        long modifyCount = records.stream()
+                .filter(r -> r instanceof ModifyRecord mr && mr.factHandleId() == 1L)
+                .count();
+        assertThat(modifyCount).isEqualTo(1);
+    }
+
+    @Test
+    void mergingCycle_sparsePagesSeparatedByLivePage_doesNotMergeAcrossTheGap() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a"); storage.retract(1L); storage.safepoint(0); // page "0": sparse
+        storage.insert(2L, "b"); storage.retract(2L); storage.safepoint(1); // page "1": sparse (contiguous with "0")
+        storage.insert(3L, "c"); storage.safepoint(2);                      // page "2": live — the gap
+        storage.insert(4L, "d"); storage.retract(4L); storage.safepoint(3); // page "3": sparse (isolated after the gap)
+
+        CompactionCoordinator.onDemand(storage).runMergingCycle();
+
+        // The contiguous sparse run {"0","1"} may be merged, but page "3" is separated from
+        // it by the live page "2". Merging "3" into the same page would collapse records that
+        // straddle a still-live page and reorder the journal, so it must never be compacted
+        // across the gap.
+        assertThat(storage.retiredPageIds()).contains("0", "1"); // contiguous run still compacts
+        assertThat(storage.retiredPageIds()).doesNotContain("3"); // isolated page left alone
     }
 
     @Test

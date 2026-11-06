@@ -29,7 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -103,15 +103,32 @@ public class CompactionCoordinator {
 
 
     void runMergingCycle() {
-        Map<String, long[]> liveness = scanLiveness();
-        Set<String> candidates = new HashSet<>();
-        liveness.forEach((id, counts) -> {
-            if (isSparse(counts)) {
-                candidates.add(id);
+        final Map<String, long[]> liveness = scanLiveness();
+        // Merge only contiguous runs of sparse pages. Pages separated by a still-live page
+        // must never be merged together: the merged page occupies a single slot in the
+        // journal, so collapsing records that straddle a live gap would reorder them on
+        // restore (fatal for a fact's modify-delta chain). Walk pages in journal order,
+        // group maximal runs of consecutive sparse pages, then merge each run of 2+ pages.
+        final List<List<String>> runs = new ArrayList<>();
+        List<String> run = new ArrayList<>();
+        for (final String pageId : storage.indexStatus().livePageIds()) {
+            final long[] counts = liveness.get(pageId);
+            if (counts != null && isSparse(counts)) {
+                run.add(pageId);
+            } else if (!run.isEmpty()) {
+                runs.add(run);
+                run = new ArrayList<>();
             }
-        });
-        if (!candidates.isEmpty()) {
-            compact(candidates);
+        }
+        if (!run.isEmpty()) {
+            runs.add(run);
+        }
+        for (final List<String> contiguousRun : runs) {
+            // A lone sparse page has no sparse neighbour to merge with — skip it; it will be
+            // swept up once an adjacent page also goes sparse.
+            if (contiguousRun.size() >= 2) {
+                compact(new LinkedHashSet<>(contiguousRun));
+            }
         }
     }
 
@@ -125,7 +142,10 @@ public class CompactionCoordinator {
     
     Map<String, long[]> scanLiveness() {
         final Map<String, long[]> liveness = new HashMap<>();
-        final Map<Long, String> factToPage = new HashMap<>();
+        // A fact's live state can span several pages: its insert plus every page it was
+        // modified on. We track all of them so a retract can reverse the fact's live
+        // contribution everywhere, not just on its insert page.
+        final Map<Long, List<String>> factToPages = new HashMap<>();
         final List<JournalRecord> pending = new ArrayList<>();
         String lastPageId = null;
 
@@ -136,13 +156,13 @@ public class CompactionCoordinator {
 
                 // Physical page boundary (size-triggered roll, no SafepointRecord)
                 if (!pageId.equals(lastPageId) && lastPageId != null) {
-                	flushPageLiveness(lastPageId, pending, liveness, factToPage);
+                	flushPageLiveness(lastPageId, pending, liveness, factToPages);
                     pending.clear();
                 }
                 lastPageId = pageId;
 
                 if (record instanceof SafepointRecord) {
-                	flushPageLiveness(pageId, pending, liveness, factToPage);
+                	flushPageLiveness(pageId, pending, liveness, factToPages);
                     pending.clear();
                 } else {
                     pending.add(record);
@@ -157,27 +177,41 @@ public class CompactionCoordinator {
     private static void flushPageLiveness(final String pageId,
                                           final List<JournalRecord> pending,
                                           final Map<String, long[]> liveness,
-                                          final Map<Long, String> factToPage) {
+                                          final Map<Long, List<String>> factToPages) {
         if (pending.isEmpty()) {
             return;
         }
         liveness.computeIfAbsent(pageId, k -> new long[2]);
         for (final JournalRecord r : pending) {
             if (r instanceof InsertRecord insert) {
+                // A re-insert supersedes any prior live state for the fact.
+                reverseLiveness(insert.factHandleId(), liveness, factToPages);
                 liveness.get(pageId)[0]++;
                 liveness.get(pageId)[1]++;
-                String previousPage = factToPage.put(insert.factHandleId(), pageId);
-                if (previousPage != null) {
-                    liveness.get(previousPage)[0]--;
-                }
-            } else if (r instanceof RuleMatchRecord || r instanceof ModifyRecord) {
+                factToPages.computeIfAbsent(insert.factHandleId(), k -> new ArrayList<>()).add(pageId);
+            } else if (r instanceof ModifyRecord modify) {
+                // A modify is current state of a live fact — live content, like an insert.
+                liveness.get(pageId)[0]++;
+                liveness.get(pageId)[1]++;
+                factToPages.computeIfAbsent(modify.factHandleId(), k -> new ArrayList<>()).add(pageId);
+            } else if (r instanceof RuleMatchRecord) {
                 liveness.get(pageId)[1]++;
             } else if (r instanceof RetractRecord retract) {
                 liveness.get(pageId)[1]++;
-                final String origin = factToPage.remove(retract.factHandleId());
-                if (origin != null) {
-                    liveness.get(origin)[0]--;
-                }
+                reverseLiveness(retract.factHandleId(), liveness, factToPages);
+            }
+        }
+    }
+
+    // Drops a fact's live contribution from every page that held it (insert + modifies),
+    // leaving each page's total untouched. Used on retract and on re-insert supersession.
+    private static void reverseLiveness(final long factHandleId,
+                                        final Map<String, long[]> liveness,
+                                        final Map<Long, List<String>> factToPages) {
+        final List<String> origins = factToPages.remove(factHandleId);
+        if (origins != null) {
+            for (final String origin : origins) {
+                liveness.get(origin)[0]--;
             }
         }
     }
@@ -196,14 +230,17 @@ public class CompactionCoordinator {
         // Phase 1 — PREPARE
         storage.compactionPrepare(mergedPageId, replacedPageIds);
 
-        // Phase 2 — WRITE: collect live InsertRecords from source pages.
-        // A fact is live if it was inserted in a source page and never retracted.
+        // Phase 2 — WRITE: carry every live fact's records (its insert plus any modify deltas)
+        // from the source pages into the merged page, in original order. A fact is live if it
+        // was never retracted. Order is preserved so restore replays each insert before its
+        // modifies; because the source pages form a contiguous run (see runMergingCycle), no
+        // record outside the run interleaves, so the merged page may occupy the run's slot.
         final Set<Long> retractedIds = new HashSet<>();
-        final Map<Long, InsertRecord> liveInserts = new LinkedHashMap<>();
+        final List<JournalRecord> mergedLive = new ArrayList<>();
 
         try (JournalScanner scanner = storage.scan(0)) {
             String lastPageId = null;
-            final List<InsertRecord> pageBuffer = new ArrayList<>();
+            final List<JournalRecord> pageBuffer = new ArrayList<>();
             while (scanner.hasNext()) {
                 final JournalRecord record = scanner.next();
                 final String pageId = scanner.currentPageId();
@@ -211,9 +248,7 @@ public class CompactionCoordinator {
                 // Physical page boundary (size-triggered roll)
                 if (!pageId.equals(lastPageId) && lastPageId != null) {
                     if (pageIds.contains(lastPageId)) {
-                        for (final InsertRecord insert : pageBuffer) {
-                            liveInserts.put(insert.factHandleId(), insert);
-                        }
+                        mergedLive.addAll(pageBuffer);
                     }
                     pageBuffer.clear();
                 }
@@ -221,26 +256,32 @@ public class CompactionCoordinator {
 
                 if (record instanceof SafepointRecord) {
                     if (pageIds.contains(pageId)) {
-                        for (final InsertRecord insert : pageBuffer) {
-                            liveInserts.put(insert.factHandleId(), insert);
-                        }
+                        mergedLive.addAll(pageBuffer);
                     }
                     pageBuffer.clear();
-                } else if (record instanceof InsertRecord insert) {
-                    pageBuffer.add(insert);
+                } else if (record instanceof InsertRecord || record instanceof ModifyRecord) {
+                    pageBuffer.add(record);
                 } else if (record instanceof RetractRecord retract) {
                     retractedIds.add(retract.factHandleId());
                 }
             }
-            // Trailing open page — no source-page inserts; discard.
+            // Trailing open page — no source-page records; discard.
         }
-        liveInserts.keySet().removeAll(retractedIds);
+        mergedLive.removeIf(r -> retractedIds.contains(factHandleId(r)));
 
-        List<JournalRecord> mergedRecords = new ArrayList<>(liveInserts.values());
+        final List<JournalRecord> mergedRecords = new ArrayList<>(mergedLive);
         mergedRecords.add(new SafepointRecord(-1, 0L));
         storage.writeMergedPage(mergedPageId, mergedRecords);
 
         // Phase 3 — COMMIT
         storage.compactionCommit(mergedPageId, replacedPageIds);
+    }
+
+    // Fact handle of a carried record; mergedLive only ever holds inserts and modifies.
+    private static long factHandleId(final JournalRecord record) {
+        if (record instanceof InsertRecord insert) {
+            return insert.factHandleId();
+        }
+        return ((ModifyRecord) record).factHandleId();
     }
 }

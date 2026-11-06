@@ -5,6 +5,30 @@ Promote to an ADR when ready to decide; discard when no longer relevant.
 
 ---
 
+## 2026-11-06 — Reorder events to compact non-contiguous pages
+
+**Priority:** low
+**Status:** active
+
+Compaction currently merges only *contiguous* runs of sparse pages (#66): the
+merged page occupies one journal slot, so merging across a still-live page
+would reorder a fact's modify-delta chain on restore. A smarter strategy could
+lift that restriction by *reordering events*. Two angles: (1) push records
+forward past pages that don't affect them, increasing the odds that sparse
+pages become adjacent; (2) when a fact is "held back" by a live page in the
+middle, split the journal — leave the non-compactable facts in one page and
+emit a following page holding the facts that *are* compactable. Effectively a
+stable sort of facts into compactable vs pinned groups, preserving each fact's
+own delta order while rearranging across facts.
+
+**Context:** Raised right after fixing #66. The contiguous-only rule is the
+safe, correct bug fix; this is the "better algorithm for another day" the fix
+deliberately deferred. Depends on preserving per-fact delta ordering while
+relaxing global page ordering — related to the "global record ordinal" option
+discussed (decouple restore order from page order).
+
+**Promoted to:**
+
 ## 2026-10-02 — Gotcha: `Set.of(...)` iteration order is randomized per JVM run
 
 **Priority:** medium

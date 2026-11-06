@@ -270,8 +270,15 @@ page ID. See ADR-0001.
 rescan (not write-path interception) on a daemon background thread
 (`drools-journal-compactor`) at a configurable interval (default 60 s).
 The coordinator is stateless between polls. Tracks `pageId → (liveCount,
-totalCount)`. When `liveCount / totalCount < 0.30`, the page becomes a
-compaction candidate.
+totalCount)`. A fact's live records — its insert and any modify deltas —
+each count toward `liveCount` on whichever page they occupy; a retract
+reverses that fact's live contribution on *every* such page. When
+`liveCount / totalCount < 0.30`, the page becomes a compaction candidate.
+Only *contiguous* runs of candidate pages are merged together — pages
+separated by a still-live page are never merged. The merged page occupies a
+single slot in the journal, so collapsing records across a live gap would
+reorder a fact's modify-delta chain on restore. A lone candidate with no
+sparse neighbour is left until an adjacent page also goes sparse.
 
 **Session lifecycle:** `JournalledSessionFactory.open(kbase, storage, Duration)`
 creates and starts the coordinator; the one-arg overload delegates with
@@ -284,7 +291,7 @@ Four-step atomic protocol — writer never pauses:
 
 ```
 Step 1 — PREPARE:  append CompactionPrepareRecord { Pm_id, replacedPageIds: [P1, P2] }
-Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live InsertRecords + trailing SafepointRecord)
+Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live facts' records — inserts + modify deltas, in order — + trailing SafepointRecord)
 Step 3 — COMMIT:   append CompactionCommitRecord { Pm_id, replacedPageIds: [P1, P2] }
 Step 4 — RETIRE:   lazily delete P1, P2 (correctness does not depend on this completing)
 ```
