@@ -1,48 +1,68 @@
 # Session Handover — drools-journal
 
-**Date:** 2026-10-05
-**Branch:** `epic-snapshot-mode` (both project and workspace; pushed to origin)
-**Head:** workspace `3df1d5b`, project blog commit pushed on `epic-snapshot-mode`
+**Date:** 2026-11-06
+**Branch:** `main` (feat/66 merged via PR #70, branch deleted; main pushed)
+**Head:** `d5d748f`
 
 ---
 
 ## What Changed This Session
 
-Restarted **epic #38** (three-mode durability replacing drools-reliability),
-focused on the first deliverable: **SNAPSHOT mode**. All design + planning —
-**no implementation code written**.
+Fixed **#66** — compaction silently dropped a live fact's `ModifyRecord`
+deltas, so facts reverted to their originally-inserted state on restore.
+Two coupled defects, both in `CompactionCoordinator`:
 
-- **Design convergence:** SNAPSHOT is *not* a new record or restore path. A
-  snapshot = an ordinary merged page containing all live facts. `SnapshotRecord`
-  from #38's scope is **resolved by omission**. SNAPSHOT = a compaction *policy*
-  that full-merges every sealed live page into one on the existing periodic
-  interval. Restore is unchanged (`scan()` already returns only live pages).
-- **Framing rule (Paolo's directive):** keep functionality separate from
-  implementation strategy. Spec is split — **Part A = contract** (STORES_ONLY
-  parity, O(live-facts) restore, safepoint consistency, `DurabilityMode` API);
-  **Part B = initial strategy** (full-merge). Tests target Part A.
-- **Cadence:** reuse the existing periodic compaction interval; no second
-  trigger mechanism (revisit later if needed).
-- **Artifacts:** spec `specs/2026-10-05-snapshot-mode-design.md`; plan
-  `plans/2026-10-05-snapshot-durability-mode-api.md` (#61, 2 TDD tasks);
-  `design/JOURNAL.md` + `.meta` scaffolded (issue 38, sha b0fbe5b).
-- **GitHub:** #38 scope checklist nests new subitems. Created **#61** (API +
-  wiring) → **#64** (full-merge policy) → **#65** (logical-facts-as-plain) →
-  **#62** (parity ITs) → **#63** (restore benchmark). Dependency order as listed.
-- **Blog:** `2026-10-05-...-snapshot-that-was-a-merge.md` (phase-update)
-  committed + pushed (project repo).
+- **Scoring** (`flushPageLiveness`): a modify now counts as *live* content
+  (not just denominator), tracked per-fact across every page it touches and
+  reversed on retract — `factToPage` became one-to-many `factToPages`.
+- **Merge** (`compact`): carries each live fact's insert + modify deltas into
+  the merged page **in order**, dropping all records of retracted facts.
+- **Selection** (`runMergingCycle`): merges only **contiguous runs** of sparse
+  pages. Key insight: inserts commute, modifies don't — merging across a live
+  gap reorders a fact's delta chain (no valid slot for the merged page).
+
+Commits: `bc5c0c2` (scoring), `a111571` (merge + selection). PR **#70** merged,
+**#66 closed**. DESIGN.md compaction section synced. Blog entry +
+`IDEAS.md` entry (reorder-events strategy, deferred) added.
 
 ---
 
 ## Where to Start Next
 
-**Implement #61** per `plans/2026-10-05-snapshot-durability-mode-api.md` —
-inline execution, TDD. Pure plumbing: `DurabilityMode` enum (JOURNAL,
-SNAPSHOT; JOURNAL_DELTA reserved in javadoc only) + `DurableSessionOption
-.withMode` + thread through `CompactionCoordinator` (new 3-arg ctor) and
-`JournalledRuntimeComponentFactory.java:101`. No behavioural change until #64.
-Then #64 → #65 → #62 → #63.
+**Implement #61 — SNAPSHOT `DurabilityMode` API + session wiring** (first item
+of epic **#38**, now unblocked by the #66 fix). Follow
+`plans/2026-10-05-snapshot-durability-mode-api.md`, inline TDD.
 
-Stale-ref note: spec Part A.4 / B.2 mention `JournalledSessionFactory.open(...)`
-— that class no longer exists; real wiring is `JournalledRuntimeComponentFactory`
-reading `DurableSessionOption` from the `Environment`. The plan uses the correct class.
+Pure plumbing, no behavioural change until #64: `DurabilityMode` enum (JOURNAL,
+SNAPSHOT; JOURNAL_DELTA reserved in javadoc only) + `DurableSessionOption
+.withMode` + thread the mode through `CompactionCoordinator` (new ctor) and the
+runtime factory.
+
+**Stale-ref warning:** spec mentions `JournalledSessionFactory.open(...)` — that
+class no longer exists. Real wiring is `JournalledRuntimeComponentFactory`
+reading `DurableSessionOption` from the `Environment`. The plan uses the correct
+class.
+
+Epic order after #61: **#64** (full-merge snapshot policy — where the #66
+carry-forward/contiguity work pays off) → **#65** → **#62** → **#63**.
+
+---
+
+## Open Items / Notes
+
+- **#55** — concurrency bug (Chronicle `catalogWriter` shared between session and
+  compaction threads). Competing priority; a safety fix, not feature work.
+- **#58 flake** (`ChroniclePageRetirementIT`): known transient — empty restore
+  after compaction; not a regression.
+
+---
+
+## References (locate on demand)
+
+| What | Path |
+|------|------|
+| Next-item plan (#61) | `plans/2026-10-05-snapshot-durability-mode-api.md` |
+| Epic journal | `design/JOURNAL.md` |
+| Primary design | `DESIGN.md` (compaction section updated this session) |
+| This session's blog | `blog/2026-11-06-PaoloB01-modifies-dont-commute.md` |
+| Deferred idea | `IDEAS.md` (top entry — reorder events to compact non-contiguous pages) |
