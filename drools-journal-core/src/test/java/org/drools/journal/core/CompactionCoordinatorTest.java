@@ -15,6 +15,7 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.DurabilityMode;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -24,6 +25,21 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class CompactionCoordinatorTest {
+
+    @Test
+    void twoArgConstructor_defaultsToJournalMode() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        assertThat(CompactionCoordinator.onDemand(storage).mode())
+                .isEqualTo(DurabilityMode.JOURNAL);
+    }
+
+    @Test
+    void threeArgConstructor_retainsGivenMode() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        CompactionCoordinator coordinator =
+                new CompactionCoordinator(storage, Duration.ZERO, DurabilityMode.SNAPSHOT);
+        assertThat(coordinator.mode()).isEqualTo(DurabilityMode.SNAPSHOT);
+    }
 
     @Test
     void safepoint_whenAppended_rollsCurrentPage() {

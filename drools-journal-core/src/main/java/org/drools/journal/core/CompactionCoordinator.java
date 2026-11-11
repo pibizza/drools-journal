@@ -15,6 +15,7 @@
  */
 package org.drools.journal.core;
 
+import org.drools.journal.api.DurabilityMode;
 import org.drools.journal.api.InsertRecord;
 import org.drools.journal.api.JournalRecord;
 import org.drools.journal.api.ModifyRecord;
@@ -45,17 +46,28 @@ public class CompactionCoordinator {
     private final JournalStorage storage;
     private final Duration mergingInterval;
     private final Duration retirementInterval;
+    private final DurabilityMode mode;
     private ScheduledExecutorService mergingExecutor;
     private ScheduledExecutorService retirementExecutor;
 
     CompactionCoordinator(final JournalStorage storage, final Duration mergingInterval) {
+        this(storage, mergingInterval, DurabilityMode.JOURNAL);
+    }
+
+    CompactionCoordinator(final JournalStorage storage, final Duration mergingInterval,
+                          final DurabilityMode mode) {
         this.storage = storage;
         this.mergingInterval = mergingInterval;
         this.retirementInterval = Duration.ZERO;
+        this.mode = mode;
     }
 
     public static CompactionCoordinator onDemand(final JournalStorage storage) {
         return new CompactionCoordinator(storage, Duration.ZERO);
+    }
+
+    DurabilityMode mode() {
+        return mode;
     }
 
     void start() {
