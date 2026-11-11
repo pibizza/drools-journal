@@ -40,6 +40,7 @@ public class DurableSessionOption {
     private ObjectStorageMode objectStorageMode = ObjectStorageMode.EMBED;
     private PageRollStrategy pageRollStrategy = PageRollStrategies.safepointOnly();
     private JournalStorage journalStorage;
+    private DurabilityMode durabilityMode = DurabilityMode.JOURNAL;
     private Duration compactionInterval = Duration.ofSeconds(60);
     private ModifyLambdaRegistry modifyLambdaRegistry = new ModifyLambdaRegistry();
     private Function<Object, String> externalRefKeySupplier;
@@ -135,9 +136,22 @@ public class DurableSessionOption {
         return this;
     }
 
+    public DurabilityMode getDurabilityMode() {
+        return durabilityMode;
+    }
+
+    public DurableSessionOption withMode(final DurabilityMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("DurabilityMode must not be null");
+        }
+        this.durabilityMode = mode;
+        return this;
+    }
+
     @Override
     public String toString() {
         return "DurableSessionOption(objectStorageMode=" + objectStorageMode +
+                ", durabilityMode=" + durabilityMode +
                 ", compactionInterval=" + compactionInterval +
                 ", journalStorage=" + journalStorage + ")";
     }
