@@ -98,7 +98,8 @@ public class JournalledRuntimeComponentFactory extends RuntimeComponentFactoryIm
 
         //setup of compaction coordinator, the component in charge of compacting the journal
         Duration interval = opt.getCompactionInterval();
-        CompactionCoordinator coordinator = new CompactionCoordinator(storage, interval);
+        CompactionCoordinator coordinator =
+                new CompactionCoordinator(storage, interval, opt.getDurabilityMode());
         if (!interval.isZero()) {
             coordinator.start();
         }
