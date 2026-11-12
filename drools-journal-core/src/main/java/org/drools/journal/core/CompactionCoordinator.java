@@ -231,8 +231,12 @@ public class CompactionCoordinator {
         storage.compactionPrepare(mergedPageId, replacedPageIds);
 
         // Phase 2 — WRITE: carry every live fact's records (its insert plus any modify deltas)
-        // from the source pages into the merged page, in original order. A fact is live if it
-        // was never retracted. Order is preserved so restore replays each insert before its
+        // and every still-live rule match from the source pages into the merged page, in
+        // original order. A fact is live if it was never retracted; a RuleMatchRecord is live
+        // while all the facts it references are live (once any is retracted the match tuple can
+        // no longer re-form, so the match is dead weight). Carrying live matches preserves the
+        // restore "already-fired" set (so rules do not re-fire) and the TMS justification for
+        // live logical facts. Order is preserved so restore replays each insert before its
         // modifies; because the source pages form a contiguous run (see runMergingCycle), no
         // record outside the run interleaves, so the merged page may occupy the run's slot.
         final Set<Long> retractedIds = new HashSet<>();
@@ -259,7 +263,8 @@ public class CompactionCoordinator {
                         mergedLive.addAll(pageBuffer);
                     }
                     pageBuffer.clear();
-                } else if (record instanceof InsertRecord || record instanceof ModifyRecord) {
+                } else if (record instanceof InsertRecord || record instanceof ModifyRecord
+                        || record instanceof RuleMatchRecord) {
                     pageBuffer.add(record);
                 } else if (record instanceof RetractRecord retract) {
                     retractedIds.add(retract.factHandleId());
@@ -267,7 +272,7 @@ public class CompactionCoordinator {
             }
             // Trailing open page — no source-page records; discard.
         }
-        mergedLive.removeIf(r -> retractedIds.contains(factHandleId(r)));
+        mergedLive.removeIf(r -> isDead(r, retractedIds));
 
         final List<JournalRecord> mergedRecords = new ArrayList<>(mergedLive);
         mergedRecords.add(new SafepointRecord(-1, 0L));
@@ -277,11 +282,24 @@ public class CompactionCoordinator {
         storage.compactionCommit(mergedPageId, replacedPageIds);
     }
 
-    // Fact handle of a carried record; mergedLive only ever holds inserts and modifies.
-    private static long factHandleId(final JournalRecord record) {
+    // A carried record is dead if the fact it concerns was retracted. For an insert or modify
+    // that is its own factHandleId; for a rule match it is dead as soon as ANY referenced fact
+    // is retracted, since the match tuple can then never re-form.
+    private static boolean isDead(final JournalRecord record, final Set<Long> retractedIds) {
         if (record instanceof InsertRecord insert) {
-            return insert.factHandleId();
+            return retractedIds.contains(insert.factHandleId());
         }
-        return ((ModifyRecord) record).factHandleId();
+        if (record instanceof ModifyRecord modify) {
+            return retractedIds.contains(modify.factHandleId());
+        }
+        if (record instanceof RuleMatchRecord match) {
+            for (final long factHandleId : match.factHandleIds()) {
+                if (retractedIds.contains(factHandleId)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return false;
     }
 }
