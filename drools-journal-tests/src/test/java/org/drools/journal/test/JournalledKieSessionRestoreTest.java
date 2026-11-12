@@ -17,8 +17,11 @@ package org.drools.journal.test;
 
 import java.time.Duration;
 
+import java.util.Set;
+
 import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.api.JournalStorage;
+import org.drools.journal.core.CompactionCoordinator;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.EmbedStrategy;
 import org.junit.jupiter.api.Test;
@@ -167,6 +170,48 @@ class JournalledKieSessionRestoreTest {
             java.util.Collection<Object> objects3 = (java.util.Collection<Object>) session3.getObjects();
             assertThat(objects3).containsExactlyInAnyOrder(1, 2);
             assertThat(session3.fireAllRules()).isZero();
+        }
+    }
+
+    @Test
+    void endToEnd_firedRuleSurvivesCompaction_restoredSessionDoesNotRefire() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+
+        try (KieSession session1 = kbase.newKieSession(null, journalEnv(storage))) {
+            session1.insert(42);
+            session1.fireAllRules();   // page "0": insert(42) + RuleMatchRecord(ProcessFact,[42])
+        }
+
+        // Force-merge the sealed page. With the #72 fix the fired match survives the merge, so
+        // the restored already-fired set still suppresses it.
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
+            assertThat(session2.getObjects()).singleElement().isEqualTo(42);
+            assertThat(session2.fireAllRules()).isZero(); // must not re-fire
+        }
+    }
+
+    @Test
+    void endToEnd_logicalFactLosesSupportThenCompacted_restoresEmpty() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(LOGICAL_RULE, ResourceType.DRL).build();
+
+        try (KieSession session1 = kbase.newKieSession(null, journalEnv(storage))) {
+            FactHandle handle = session1.insert(42);
+            session1.fireAllRules();   // page "0": insert(42) + match + insertLogical("hello")
+            session1.delete(handle);
+            session1.fireAllRules();   // page "1": retract(42) + TMS retract("hello")
+        }
+
+        // Retracting the non-logical support cascaded (via TMS) into retracting the logical
+        // fact; both pages are now fully dead and get merged away. Restore must be empty.
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
+
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
+            assertThat(session2.getObjects()).isEmpty();
+            assertThat(session2.fireAllRules()).isZero();
         }
     }
 

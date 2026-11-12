@@ -280,6 +280,14 @@ single slot in the journal, so collapsing records across a live gap would
 reorder a fact's modify-delta chain on restore. A lone candidate with no
 sparse neighbour is left until an adjacent page also goes sparse.
 
+**Rule-match liveness:** a merged page preserves every `RuleMatchRecord`
+whose referenced facts are all still live, and drops a match only once any
+referenced fact is retracted (the match tuple can then never re-form). This
+keeps the restore "already-fired" set intact — so a surviving fact's rule does
+not re-fire on restore — and preserves the justifying match for any live
+logical fact so its TMS dependency can be rewired. Matches are carried in
+original journal order alongside the facts' insert/modify records.
+
 **Session lifecycle:** `JournalledSessionFactory.open(kbase, storage, Duration)`
 creates and starts the coordinator; the one-arg overload delegates with
 `DEFAULT_INTERVAL = 60s`. `Duration.ZERO` disables the background thread — the
@@ -291,7 +299,7 @@ Four-step atomic protocol — writer never pauses:
 
 ```
 Step 1 — PREPARE:  append CompactionPrepareRecord { Pm_id, replacedPageIds: [P1, P2] }
-Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live facts' records — inserts + modify deltas, in order — + trailing SafepointRecord)
+Step 2 — WRITE:    read P1 + P2 → write merged page Pm (live facts' records — inserts + modify deltas — plus every still-live RuleMatchRecord, in order, + trailing SafepointRecord)
 Step 3 — COMMIT:   append CompactionCommitRecord { Pm_id, replacedPageIds: [P1, P2] }
 Step 4 — RETIRE:   lazily delete P1, P2 (correctness does not depend on this completing)
 ```

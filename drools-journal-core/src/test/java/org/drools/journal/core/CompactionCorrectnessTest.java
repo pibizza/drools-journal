@@ -102,6 +102,69 @@ class CompactionCorrectnessTest {
     }
 
     @Test
+    void compact_liveFactWithFiredMatch_preservesRuleMatchRecord() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": fact 1 inserted and a rule fired against it — the fact stays live.
+        storage.insert(1L, "live");
+        storage.ruleMatch(1L, "org.example", "MyRule", new long[]{1L});
+        storage.safepoint(0);
+
+        // Force-merge the page directly to isolate the merge step from selection.
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // Fact 1 is still live, so the match that already fired against it is NOT dead and
+        // must survive the merge (spec §7.4). Otherwise restore's already-fired set is empty,
+        // the rule re-fires on restore, and its consequence re-executes.
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        assertThat(result.firedMatches()).hasSize(1);
+    }
+
+    @Test
+    void compact_liveLogicalFact_preservesJustifyingMatch() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": non-logical fact 1 fires a rule (match id 100) which logically inserts
+        // fact 2. All three are live.
+        storage.insert(1L, "support");
+        storage.ruleMatch(100L, "org.example", "LogicalInserter", new long[]{1L});
+        storage.insertLogical(2L, new EmbedStrategy().store("derived", null), 100L);
+        storage.safepoint(0);
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0"));
+
+        // Both facts are live, so the justifying match must survive — otherwise restore cannot
+        // resolve the TMS link (firedMatchesById.get(100) would be null) and the logical fact
+        // would be orphaned.
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        assertThat(result.survivingFacts()).containsOnlyKeys(1L, 2L);
+        assertThat(result.firedMatchesById()).containsKey(100L);
+        assertThat(result.pendingTmsLinks())
+                .anySatisfy(link -> {
+                    assertThat(link.factHandleId()).isEqualTo(2L);
+                    assertThat(link.justifyingRuleMatchId()).isEqualTo(100L);
+                });
+    }
+
+    @Test
+    void compact_retractedFactWithFiredMatch_dropsRuleMatchRecord() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        // Page "0": fact 1 inserted, a rule fired against it.
+        storage.insert(1L, "doomed");
+        storage.ruleMatch(1L, "org.example", "MyRule", new long[]{1L});
+        storage.safepoint(0);
+        // Page "1": fact 1 retracted — the match tuple can never re-form.
+        storage.retract(1L);
+        storage.safepoint(1);
+
+        CompactionCoordinator.onDemand(storage).compact(Set.of("0", "1"));
+
+        // The fact is dead, so its match is dead weight and must be dropped — nothing about
+        // fact 1 should survive, and restore must carry no already-fired entry for it.
+        RestoreEngine.ScanResult result = new RestoreEngine(storage, new ModifyLambdaRegistry()).scan();
+        assertThat(result.survivingFacts()).isEmpty();
+        assertThat(result.firedMatches()).isEmpty();
+    }
+
+    @Test
     void compact_liveFactWithModifyDelta_preservesModifyRecord() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         // Page "0": one live insert → liveCount=1/totalCount=1 → 100%, NOT sparse.
