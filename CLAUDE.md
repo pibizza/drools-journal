@@ -63,6 +63,9 @@ type: java
 - **All commits should reference an issue** — `Refs #N` (ongoing) or `Closes #N` (done).
   If the user explicitly says to skip ("commit as is", "no issue"), ask once to confirm
   before proceeding — it must be a deliberate choice, not a default.
+- **Epic-branch PRs:** `Closes #N` does not auto-close issues when merging into an
+  epic branch (non-default). After merging, close the issue manually and tick it in
+  the epic's Scope checklist.
 
 ## Writing Style Guide
 

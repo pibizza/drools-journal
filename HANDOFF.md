@@ -1,53 +1,49 @@
 # Session Handover — drools-journal
 
-**Date:** 2026-11-12
-**Branch:** `feat/64-snapshot-compaction-policy` (rebased onto refreshed `main`)
-**Head:** `3a20998` (handover doc) — #64 implementation not yet committed
+**Date:** 2026-11-24
+**Branch:** `epic-snapshot-mode` (#77 merged at `f83ea13`; in sync with origin)
 
 ---
 
 ## What Changed This Session
 
-- **#72 found, fixed, merged.** While starting #64 we discovered `compact()`
-  dropped **every** `RuleMatchRecord` — a latent base-compaction bug (not
-  SNAPSHOT-specific). Matches for still-live facts are needed on restore for the
-  already-fired set (no rule re-fire) and TMS justification. Fix: keep a match
-  while all its referenced facts are live; drop once any is retracted. PR **#73
-  merged to `main`**, `#72 closed`. **ADR 0004** records the decision. Verified
-  both edges (3 core + 2 end-to-end tests), full `mvn clean install` green.
-- **Branches rebased & clean.** `epic-snapshot-mode` (force-pushed) and
-  `feat/64` both rebased onto `main` (now carries the #72 fix). All three
-  branches in sync with origin.
-- **#64 Task-1 is STASHED, not committed** — `stash@{0}` holds the
-  `runMergingCycle` mode-branch (`runSnapshotCycle`/`runJournalCycle`) + 3
-  SNAPSHOT tests. Left uncommitted on purpose (see open design question).
-- **Blog correction** written (`2026-11-12-...-match-records-werent-overhead.md`)
-  — corrects the 2026-10-05 claim that match records were "overhead".
+- **#64 done.** SNAPSHOT = full-merge into a **single** page (decision: one large
+  page for now). `runMergingCycle` → `runSnapshotCycle` / `runJournalCycle`.
+  3 core tests + 1 end-to-end restore test (`compactNow()`), full build green.
+  PR **#77 merged** into `epic-snapshot-mode`; #64 closed; epic #38 ticked (#61, #64).
+- **Three issues filed** under epic #38, each needing discussion or its own step:
+  - **#74**: split snapshot output into multiple size-bounded pages. **Atomicity
+    of a multi-page commit must be designed first.**
+  - **#75** (bug, existing): `InMemoryJournalStorage.buildIndex()` doesn't retire
+    a merged page that is merged again, so both stay live and facts duplicate.
+    SNAPSHOT hits it from cycle 2. Found by reading the code; **not yet proven by
+    a test**. Chronicle `CatalogIndex.spliceIntoIndex` looks correct.
+  - **#76**: physical retirement never runs in production (`retirementInterval`
+    hard-coded `ZERO`, no caller of `runRetirementCycle`). Needs a policy
+    discussion. Logical retirement at COMMIT works.
+- Journal entry added to `design/JOURNAL.md`. Note its header still says
+  `epic-compaction-coordinator` (stale from an earlier epic); fix at epic close.
+- CLAUDE.md: new Work Tracking note (`Closes #N` doesn't close issues on
+  epic-branch merges, so close them by hand). Blog entry written.
 
 ---
 
 ## Where to Start Next
 
-**Resume #64.** `git stash pop` to restore Task-1, then **before more code**
-settle the open design question:
+**#75**: branch `fix/75-...` from `epic-snapshot-mode`. Start with the failing
+test: two consecutive SNAPSHOT cycles in `CompactionCoordinatorTest`; `m1` must
+be retired and each fact must appear once. Then make `buildIndex()` splice like
+Chronicle, and cover the same scenario on Chronicle.
 
-- **SNAPSHOT output shape.** Full-merge currently collapses all sealed pages into
-  **one** merged page via `compact()`. For a large live set that's a single giant
-  page. The desired shape is **multiple size-bounded pages**. This likely changes
-  `compact()` (or a SNAPSHOT variant) to emit a *set* of merged pages — a real
-  design decision. Brainstorm before implementing; Task-1's `runSnapshotCycle` may
-  change as a result.
-
-Prior task list (steps 1–4) from `git show HEAD~1:HANDOFF.md` still applies, but
-step 1 is now partly done (stashed) and gated on the output-shape decision.
-PR #64 → `epic-snapshot-mode`. Epic order after: #65 → #62 → #63.
+Epic order after that: #65 → #62 → #63. #74/#76 are discussion-first.
 
 ---
 
 ## Open Items / Notes
 
-*Unchanged — retrieve with: `git show HEAD~1:HANDOFF.md`* (#55 catalogWriter
-concurrency; #58 `ChroniclePageRetirementIT` known flake).
+*Unchanged — `git show f9f71c7:HANDOFF.md`* (#55 catalogWriter concurrency;
+#58 `ChroniclePageRetirementIT` flake). Local branch `feat/64-…` and its remote
+are kept (not deleted).
 
 ---
 
@@ -55,8 +51,10 @@ concurrency; #58 `ChroniclePageRetirementIT` known flake).
 
 | What | Path |
 |------|------|
-| #72 decision | `adr/0004-rule-match-liveness-in-compaction.md` |
-| #64 strategy spec | `specs/2026-10-05-snapshot-mode-design.md` (Part B.2) |
-| Compaction liveness | `DESIGN.md` → Compaction Protocol |
+| SNAPSHOT spec | `specs/2026-10-05-snapshot-mode-design.md` (Part B.2) |
 | Coordinator | `drools-journal-core/.../core/CompactionCoordinator.java` |
+| InMemory index (#75) | `drools-journal-core/src/test/.../core/InMemoryJournalStorage.java` → `buildIndex()` |
+| Chronicle index | `drools-journal-chronicle/.../internal/CatalogIndex.java` |
+| Match liveness | `adr/0004-rule-match-liveness-in-compaction.md` |
 | Epic journal | `design/JOURNAL.md` |
+| Latest blog | `blog/2026-11-24-PaoloB01-one-page-three-issues.md` |
