@@ -17,13 +17,16 @@ package org.drools.journal.test;
 
 import java.time.Duration;
 
+import java.util.Collection;
 import java.util.Set;
 
+import org.drools.journal.api.DurabilityMode;
 import org.drools.journal.api.DurableSessionOption;
 import org.drools.journal.api.JournalStorage;
 import org.drools.journal.core.CompactionCoordinator;
 import org.drools.journal.core.InMemoryJournalStorage;
 import org.drools.journal.core.EmbedStrategy;
+import org.drools.journal.core.JournalledKieSession;
 import org.junit.jupiter.api.Test;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
@@ -60,6 +63,15 @@ class JournalledKieSessionRestoreTest {
         Environment env = KieServices.get().newEnvironment();
         env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
                 .withJournalStorage(storage)
+                .withCompactionInterval(Duration.ZERO));
+        return env;
+    }
+
+    private static Environment snapshotEnv(final JournalStorage storage) {
+        Environment env = KieServices.get().newEnvironment();
+        env.set(DurableSessionOption.PROPERTY_NAME, DurableSessionOption.newSession()
+                .withJournalStorage(storage)
+                .withMode(DurabilityMode.SNAPSHOT)
                 .withCompactionInterval(Duration.ZERO));
         return env;
     }
@@ -190,6 +202,39 @@ class JournalledKieSessionRestoreTest {
         try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
             assertThat(session2.getObjects()).singleElement().isEqualTo(42);
             assertThat(session2.fireAllRules()).isZero(); // must not re-fire
+        }
+    }
+
+    @Test
+    void compactNow_snapshotModeSeveralSealedPages_restoresLiveFactsFromSingleMergedPage() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        KieBase kbase = new KieHelper().addContent(RULE, ResourceType.DRL).build();
+
+        try (KieSession session1 = kbase.newKieSession(null, snapshotEnv(storage))) {
+            session1.insert(1);
+            session1.fireAllRules();                 // page "0": insert(1) + match
+            FactHandle handle2 = session1.insert(2);
+            session1.fireAllRules();                 // page "1": insert(2) + match
+            session1.insert(3);
+            session1.fireAllRules();                 // page "2": insert(3) + match
+            session1.delete(handle2);
+            session1.fireAllRules();                 // page "3": retract(2)
+
+            // SNAPSHOT policy: merge every sealed page, regardless of sparsity.
+            ((JournalledKieSession) session1).compactNow();
+        }
+
+        // All sealed pages collapsed into a single merged snapshot page.
+        assertThat(storage.indexStatus().livePageIds()).singleElement()
+                .satisfies(id -> assertThat(id).startsWith("m-"));
+
+        // Restore deliberately uses JOURNAL mode: the snapshot is an ordinary merged page.
+        // SNAPSHOT-specific restore behaviour is #65.
+        try (KieSession session2 = kbase.newKieSession(null, journalEnv(storage))) {
+            @SuppressWarnings("unchecked")
+            Collection<Object> objects = (Collection<Object>) session2.getObjects();
+            assertThat(objects).containsExactlyInAnyOrder(1, 3);   // retracted fact 2 dropped
+            assertThat(session2.fireAllRules()).isZero();          // live matches carried → no re-fire
         }
     }
 

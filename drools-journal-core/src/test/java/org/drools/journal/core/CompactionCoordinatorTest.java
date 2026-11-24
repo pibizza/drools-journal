@@ -380,6 +380,64 @@ class CompactionCoordinatorTest {
     }
 
     @Test
+    void runMergingCycle_snapshotMode_mergesAllSealedPagesIntoOne() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);            // page "0": [insert(1)] — all live, not sparse
+        storage.insert(2L, "b");
+        storage.safepoint(1);            // page "1": [insert(2)] — all live, not sparse
+        storage.insert(3L, "c");
+        storage.safepoint(2);            // page "2": [insert(3)] — all live, not sparse
+
+        CompactionCoordinator coordinator =
+                new CompactionCoordinator(storage, Duration.ZERO, DurabilityMode.SNAPSHOT);
+        coordinator.runMergingCycle();
+
+        Map<String, long[]> liveness = coordinator.scanLiveness();
+
+        // SNAPSHOT merges every sealed live page regardless of sparsity — unlike JOURNAL,
+        // which would leave these three non-sparse pages untouched.
+        assertThat(liveness).hasSize(1);
+        String mergedPageId = liveness.keySet().iterator().next();
+        assertThat(mergedPageId).startsWith("m-");
+        assertThat(liveness.get(mergedPageId)[0]).isEqualTo(3L); // all three facts survive
+    }
+
+    @Test
+    void runMergingCycle_snapshotMode_singleSealedPage_isNoOp() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);            // page "0" — the only sealed page
+
+        CompactionCoordinator coordinator =
+                new CompactionCoordinator(storage, Duration.ZERO, DurabilityMode.SNAPSHOT);
+        coordinator.runMergingCycle();
+
+        Map<String, long[]> liveness = coordinator.scanLiveness();
+
+        // Nothing to merge — the single page is left as-is, no "m-" page created.
+        assertThat(liveness).containsOnlyKeys("0");
+    }
+
+    @Test
+    void runMergingCycle_journalMode_leavesNonSparsePagesUntouched() {
+        InMemoryJournalStorage storage = new InMemoryJournalStorage();
+        storage.insert(1L, "a");
+        storage.safepoint(0);
+        storage.insert(2L, "b");
+        storage.safepoint(1);
+
+        CompactionCoordinator coordinator =
+                new CompactionCoordinator(storage, Duration.ZERO, DurabilityMode.JOURNAL);
+        coordinator.runMergingCycle();
+
+        Map<String, long[]> liveness = coordinator.scanLiveness();
+
+        // JOURNAL only merges sparse runs — these two full pages are untouched.
+        assertThat(liveness).containsOnlyKeys("0", "1");
+    }
+
+    @Test
     void scanLiveness_sourcePagesSurvive() {
         InMemoryJournalStorage storage = new InMemoryJournalStorage();
         storage.insert(1L, "a");
