@@ -115,6 +115,27 @@ public class CompactionCoordinator {
 
 
     void runMergingCycle() {
+        if (mode == DurabilityMode.SNAPSHOT) {
+            runSnapshotCycle();
+        } else {
+            runJournalCycle();
+        }
+    }
+
+    // SNAPSHOT policy: collapse every sealed live page into a single merged snapshot page.
+    // scanLiveness() only reports sealed pages (the trailing open append page is discarded),
+    // so its key set is exactly "all sealed live pages" — the active append page is excluded
+    // automatically and the writer never pauses. Those pages form a contiguous journal prefix,
+    // so compact() can merge them in one slot without reordering any fact's modify-delta chain.
+    void runSnapshotCycle() {
+        final Set<String> sealedPages = new LinkedHashSet<>(scanLiveness().keySet());
+        // Nothing to collapse when there is zero or one sealed page.
+        if (sealedPages.size() >= 2) {
+            compact(sealedPages);
+        }
+    }
+
+    void runJournalCycle() {
         final Map<String, long[]> liveness = scanLiveness();
         // Merge only contiguous runs of sparse pages. Pages separated by a still-live page
         // must never be merged together: the merged page occupies a single slot in the

@@ -82,6 +82,7 @@ No personal style guide configured — blog entries use `write-blog/defaults/com
 
 - **Always `mvn clean install`** — never run incremental Maven builds. Stale compiled files cause confusing failures.
 - **Java 21 required** — `maven.compiler.release=21` is set in the parent POM. Builds will fail on Java 17.
+- **Focused test runs** — a single-class run across the reactor needs `-Dsurefire.failIfNoSpecifiedTests=false`, e.g. `mvn -pl drools-journal-core -am clean test -Dtest=FooTest -Dsurefire.failIfNoSpecifiedTests=false`. Without it, `-am` builds sibling modules (e.g. `drools-journal-api`) whose surefire finds no matching test and fails the whole run before the target module compiles.
 
 ## Context Management
 

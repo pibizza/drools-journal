@@ -196,3 +196,22 @@ stays isolated to `scan()`, downstream of classification.
 
 Part of issue #56's retirement gap.
 
+
+### 2026-11-24 · §Compaction Protocol (CompactionCoordinator)
+
+The merge policy now depends on the durability mode. JOURNAL keeps the
+sparsity rule: only contiguous runs of pages with `liveCount/totalCount < 0.30`
+are merged. SNAPSHOT ignores sparsity and merges *every* sealed live page into
+one merged page each cycle, so the journal collapses into a single snapshot
+page followed by the active append page. That gives O(live-facts) restore
+without a separate `SnapshotRecord` type: a snapshot is just a merged page
+built by the existing PREPARE → WRITE → COMMIT protocol. Sealed pages always
+form a contiguous journal prefix, so the merge can never reorder a modify-delta
+chain. The active page is excluded by construction (liveness scans only sealed
+pages), so the writer never pauses. The output is deliberately a single page
+for now; size-bounded multi-page output and its atomicity design are #74.
+"Retired" currently means logical retirement at COMMIT. Physical deletion is
+not wired in production in either mode (#76), so DESIGN.md's Step 4 RETIRE
+describes intent, not current behaviour.
+
+Part of issue #64 (epic #38).
